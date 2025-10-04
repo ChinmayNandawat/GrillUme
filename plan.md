@@ -22,3 +22,6 @@ Expected Framework:
 Frontend: React, TS, Vite
 Backend: node, express, TS
 DB: Supabase, Prisma
+
+
+//pehle backend pr kaam krte hai fir frontend pr
