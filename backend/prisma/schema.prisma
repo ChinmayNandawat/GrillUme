@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  resumes   Resume[]
+  roasts    Roast[]
+  votes     Vote[]
+}
+
+model Resume {
+  id           String   @id @default(cuid())
+  title        String
+  field        String
+  details      String
+  isClassified Boolean  @default(false)
+  fileUrl      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roasts    Roast[]
+}
+
+model Roast {
+  id        String   @id @default(cuid())
+  text      String
+  createdAt DateTime @default(now())
+
+  resumeId  String
+  resume    Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  votes     Vote[]
+}
+
+model Vote {
+  id        String   @id @default(cuid())
+  type      String
+  createdAt DateTime @default(now())
+
+  roastId   String
+  roast     Roast    @relation(fields: [roastId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roastId, userId])
+}
