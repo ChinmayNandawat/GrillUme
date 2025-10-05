@@ -77,3 +77,55 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+export const login = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      res.status(400).json({ message: 'Missing required fields' });
+      return;
+    }
+
+    const { data: user, error } = await supabase
+      .from('User')
+      .select('*')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Database error finding user:', error);
+      res.status(500).json({ message: 'Internal server error' });
+      return;
+    }
+
+    if (!user) {
+      res.status(401).json({ message: 'Invalid credentials' });
+      return;
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      res.status(401).json({ message: 'Invalid credentials' });
+      return;
+    }
+
+    const token = jwt.sign({ userId: user.id }, getJwtSecret(), {
+      expiresIn: '7d',
+    });
+
+    const { password: _, ...userWithoutPassword } = user;
+
+    res.status(200).json({
+      token,
+      user: userWithoutPassword,
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    if (error instanceof Error && error.message.includes('JWT_SECRET')) {
+      res.status(500).json({ message: 'Server configuration error: JWT secret is missing' });
+      return;
+    }
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
