@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../config/supabase';
+import { AuthRequest } from '../middleware/auth';
 import crypto from 'crypto';
 
 const getJwtSecret = (): string => {
@@ -126,6 +127,69 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       res.status(500).json({ message: 'Server configuration error: JWT secret is missing' });
       return;
     }
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+
+    const { data: user, error: userError } = await supabase
+      .from('User')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (userError) {
+      console.error('Database error finding user:', userError);
+      res.status(500).json({ message: 'Internal server error' });
+      return;
+    }
+
+    if (!user) {
+      res.status(401).json({ message: 'User not found or invalid token' });
+      return;
+    }
+
+    // Get count of resumes
+    const { count: resumesCount, error: resumeError } = await supabase
+      .from('Resume')
+      .select('*', { count: 'exact', head: true })
+      .eq('userId', userId);
+      
+    if (resumeError) {
+      console.error('Database error getting resumes count:', resumeError);
+    }
+
+    // Get count of roasts
+    const { count: roastsCount, error: roastError } = await supabase
+      .from('Roast')
+      .select('*', { count: 'exact', head: true })
+      .eq('userId', userId);
+      
+    if (roastError) {
+      console.error('Database error getting roasts count:', roastError);
+    }
+
+    const { password: _, ...userWithoutPassword } = user;
+
+    res.status(200).json({
+      user: {
+        ...userWithoutPassword,
+        _count: {
+          resumes: resumesCount || 0,
+          roasts: roastsCount || 0
+        }
+      },
+    });
+  } catch (error) {
+    console.error('GetMe error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
