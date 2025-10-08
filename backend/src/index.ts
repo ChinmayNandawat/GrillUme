@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
+import roastRoutes from './routes/roast.routes';
+import voteRoutes from './routes/vote.routes';
 
 dotenv.config();
 
@@ -26,6 +28,8 @@ app.use(express.json());
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/roasts', roastRoutes);
+app.use('/api/votes', voteRoutes);
 
 // Health Check Route
 app.get('/api/health', (req, res) => {

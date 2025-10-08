@@ -113,3 +113,15 @@ export const deleteVote = async (req: AuthRequest, res: Response): Promise<void>
     res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+export const getVotesByRoastId = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const roastId = String(req.params.roastId);
+    const summary = await getVoteSummary(roastId);
+    res.status(200).json(summary);
+  } catch (error) {
+    console.error('Get votes by roast id error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
