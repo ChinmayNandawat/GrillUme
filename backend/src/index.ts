@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
 import roastRoutes from './routes/roast.routes';
 import voteRoutes from './routes/vote.routes';
+import { errorHandler, notFoundHandler } from './middleware/error';
 
 dotenv.config();
 
@@ -38,6 +39,10 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
   });
 });
+
+
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
