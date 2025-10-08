@@ -8,6 +8,39 @@ const parsePositiveInt = (value: string | undefined, fallback: number): number =
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+export const getResumes = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const page = parsePositiveInt(req.query.page as string | undefined, 1);
+    const limit = Math.min(parsePositiveInt(req.query.limit as string | undefined, 10), 50);
+    const query = ((req.query.query as string | undefined) || '').trim();
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    let supabaseQuery = supabase
+      .from('Resume')
+      .select('id,title,field,details,isClassified,fileUrl,createdAt,updatedAt,userId', { count: 'exact' })
+      .order('createdAt', { ascending: false })
+      .range(from, to);
+
+    if (query) {
+      supabaseQuery = supabaseQuery.or(`title.ilike.%${query}%,field.ilike.%${query}%`);
+    }
+
+    const { data, error, count } = await supabaseQuery;
+
+    if (error) throw error;
+
+    res.status(200).json({
+      data: data || [],
+      page,
+      limit,
+      total: count || 0,
+    });
+  } catch (error) {
+    console.error('Get resumes error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
 
 export const createResume = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
