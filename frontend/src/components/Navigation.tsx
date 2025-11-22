@@ -51,3 +51,20 @@ export const Navbar = () => {
     </nav>
   );
 }
+
+
+export const Footer = () => (
+  <footer className="bg-on-background w-full mt-12 border-t-4 border-secondary">
+    <div className="flex flex-col md:flex-row justify-between items-center w-full px-8 py-10 gap-4 max-w-screen-2xl mx-auto">
+      <div className="text-xl font-black text-background italic font-headline">ROASTUME</div>
+      <div className="flex gap-8 font-body text-xs tracking-[0.05rem] uppercase font-bold text-background/80">
+        <a href="#" className="hover:text-primary-container transition-colors">PRIVACY</a>
+        <a href="#" className="hover:text-primary-container transition-colors">TERMS</a>
+        <a href="#" className="hover:text-primary-container transition-colors">SUPPORT</a>
+      </div>
+      <div className="text-primary-container font-body text-xs tracking-[0.05rem] uppercase font-bold">
+        GrillUme----+ Made for FUN, try to keep it constructive---- CN04
+      </div>
+    </div>
+  </footer>
+);
