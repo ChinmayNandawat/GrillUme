@@ -1,7 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Footer, Navbar } from "./components/layouts/Navigation";
 import Home from "./pages/Home";
-import Upload from "./pages/Upload";
+import { Upload } from "./pages/Upload";
+
 
 export default function App() {
   return (
