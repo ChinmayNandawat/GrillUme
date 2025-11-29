@@ -1,6 +1,6 @@
 import { Flame, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Skeleton } from "../ui/Skeleton";
+import { Skeleton } from "../../ui/Skeleton";
 
 interface ResumeCardProps {
   key?: string;

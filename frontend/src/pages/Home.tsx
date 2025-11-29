@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ResumeCard } from "../components/ResumeCard";
+import { ResumeCard } from "../components/roast/ResumeCard";
 import { repository } from "../services/repository";
 import type { Resume } from "../types";
 
