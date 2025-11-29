@@ -1,7 +1,7 @@
-import { BrowserRouter as Router} from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Footer, Navbar } from "./components/Navigation";
-import { ResumeCard } from "./components/ResumeCard";
-
+import Home from "./pages/Home";
+import Upload from "./pages/Upload";
 
 export default function App() {
   return (
@@ -9,21 +9,10 @@ export default function App() {
       <div className="min-h-screen flex flex-col bg-background selection:bg-primary-container selection:text-on-primary-container">
         <Navbar />
         <main className="flex-1 pt-24 pb-12 px-4 md:px-8 lg:px-10">
-          {/* Dummy Data hai for viewing cards, yaha Routes ayenge */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <ResumeCard 
-              id="1"
-              name="Chinmay"
-              role="Senior Web Developer"
-              date="10 mins ago"
-              fires="420"
-              comments="123"
-              avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=John"
-              isHot={true}
-              variant="blue"
-            />
-          </div>
-
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/upload" element={<Upload />} />
+          </Routes>
         </main>
         <Footer />
       </div>
