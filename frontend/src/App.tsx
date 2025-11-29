@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Footer, Navbar } from "./components/layouts/Navigation";
 import Home from "./pages/Home";
 import { Upload } from "./pages/Upload";
+import { Profile } from "./pages/Profile";
 
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/upload" element={<Upload />} />
+            <Route path="/profile" element={<Profile />} />
           </Routes>
         </main>
         <Footer />
