@@ -3,6 +3,7 @@ import { Footer, Navbar } from "./components/layouts/Navigation";
 import Home from "./pages/Home";
 import { Upload } from "./pages/Upload";
 import { Profile } from "./pages/Profile";
+import { RoastDetail } from "./pages/RoastDetail";
 
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/roast/:id" element={<RoastDetail />} />
           </Routes>
         </main>
         <Footer />
