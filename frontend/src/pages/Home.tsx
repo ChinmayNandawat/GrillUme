@@ -1,74 +1,179 @@
-import { ArrowRight, Plus } from "lucide-react";
+import { motion } from "motion/react";
+import { Search, Plus } from "lucide-react";
 import { Button } from "../components/ui/Button";
-import { ResumeCard } from "../components/roast/ResumeCard";
+import { SectionHeader } from "../components/ui/SectionHeader";
+import { Hero } from "../components/ui/Hero";
+import { EmptyState } from "../components/ui/EmptyState";
+import { ErrorState } from "../components/ui/ErrorState";
+import { Pagination } from "../components/ui/Pagination";
+import { ResumeCard, ResumeCardSkeleton } from "../components/roast/ResumeCard";
 import { Link } from "react-router-dom";
-import { useEffect, useState, useCallback } from "react";
-import { repository } from "../services/repository";
+import { useEffect, useState, ChangeEvent, useCallback, useMemo } from "react";
+import { getResumes } from "../services/api";
 import { Resume } from "../types";
+import { ITEMS_PER_PAGE } from "../constants";
 
-const Home = () => {
+export const Home = () => {
+  // Single source of truth for the current view's resumes
   const [resumes, setResumes] = useState<Resume[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  
 
-  const fetchResumes = useCallback(() => {
-    setResumes(repository.getAllResumes());
-  }, []);
+  // Derive computed lists using memoization
+  const hottestResumes = useMemo(() => {
+    // Only show hottest resumes on the first page when not searching
+    if (currentPage !== 1 || searchQuery) return [];
+    return resumes
+      .filter(r => r.isHot || r.isChampion)
+      .sort((a, b) => {
+        if (a.isChampion && !b.isChampion) return -1;
+        if (!a.isChampion && b.isChampion) return 1;
+        return 0;
+      })
+      .slice(0, 3);
+  }, [resumes, currentPage, searchQuery]);
+
+  const totalPages = useMemo(() => Math.ceil(totalItems / ITEMS_PER_PAGE), [totalItems]);
+
+  const fetchResumes = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { data, total } = await getResumes(currentPage, ITEMS_PER_PAGE, searchQuery);
+      setResumes(data);
+      setTotalItems(total);
+    } catch (err) {
+      console.error("Failed to fetch resumes:", err);
+      setError("The battle servers are currently under heavy fire. We couldn't retrieve the targets.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage, searchQuery]);
 
   useEffect(() => {
     fetchResumes();
-    repository.addListener("resumes-changed", fetchResumes);
-    return () => {
-      repository.removeListener("resumes-changed", fetchResumes);
-    };
   }, [fetchResumes]);
 
-  return (
-    <div className="max-w-screen-2xl mx-auto px-4">
-      {/* Hero Section */}
-      <section className="mb-20 text-center pt-10">
-        <h1 className="text-6xl md:text-8xl font-black mb-6 tracking-tighter uppercase italic text-on-background">
-          GRILL <span className="text-primary italic">U</span> ME
-        </h1>
-        <p className="text-xl md:text-2xl font-bold text-on-surface-variant max-w-2xl mx-auto mb-10 uppercase tracking-tight">
-          THE ULTIMATE ARENA WHERE DREAMS ARE INCINERATED AND CAREERS ARE FORGED IN FIRE.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link to="/upload">
-            <Button variant="primary" className="px-10 py-6 text-2xl italic font-black">
-              OFFER SACRIFICE <Plus className="ml-2 inline" size={28} strokeWidth={3} />
-            </Button>
-          </Link>
-          <Button variant="secondary" className="px-10 py-6 text-2xl italic font-black">
-            START ROASTING <ArrowRight className="ml-2 inline" size={28} strokeWidth={3} />
-          </Button>
-        </div>
-      </section>
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
-      {/* The Arena */}
-      <section className="mb-20">
-        <div className="flex items-end justify-between mb-10 border-b-8 border-on-background pb-4">
-          <h2 className="text-5xl font-black uppercase italic tracking-tighter text-on-background">
-            THE ARENA
-          </h2>
-          <div className="bg-primary-container px-4 py-1 comic-border font-headline uppercase font-black text-sm italic rotate-2">
-            LIVE FEED
+  const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    setCurrentPage(1); 
+  };
+
+  return (
+    <div className="max-w-screen-2xl mx-auto">
+      <Hero 
+        avatar="https://picsum.photos/seed/roastmaster/200"
+        level="LVL 42"
+        title="WELCOME BACK, ROASTMASTER!"
+        subtitle="READY TO INCINERATE SOME DREAMS TODAY?"
+        stats={[
+          { label: "BURNS", value: "1.2k" },
+          { label: "RANK", value: "#4", color: "text-tertiary" }
+        ]}
+      />
+
+      {/* Search Section */}
+      <section className="mb-16 px-2">
+        <div className="relative max-w-2xl mx-auto">
+          <div className="absolute -top-6 -left-2 bg-tertiary text-white px-4 py-1 comic-border font-headline text-lg uppercase italic z-10 -rotate-2">
+            FIND A VICTIM...
+          </div>
+          <div className="flex comic-border bg-white kinetic-shadow overflow-hidden">
+            <input 
+              className="w-full bg-transparent border-none p-4 font-body font-bold placeholder:text-outline focus:ring-0 text-base uppercase" 
+              placeholder="SEARCH BY NAME, JOB, OR LEVEL OF HUBRIS..." 
+              type="text"
+              value={searchQuery}
+              onChange={handleSearch}
+            />
+            <div className="bg-primary-container px-6 border-l-4 border-on-background flex items-center">
+              <Search className="font-black" />
+            </div>
           </div>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {resumes.map(resume => (
-            <ResumeCard key={resume.id} {...resume} />
-          ))}
-        </div>
       </section>
 
-      {/* FAB (Mobile only or fixed) */}
-      <Link to="/upload" className="fixed bottom-10 right-10 md:hidden">
-        <button className="w-16 h-16 bg-secondary text-white rounded-full comic-border shadow-[4px_4px_0px_0px_#383835] flex items-center justify-center z-40">
+      {error ? (
+        <ErrorState onRetry={fetchResumes} message={error} className="mb-20" />
+      ) : (
+        <>
+          {/* Hottest Resumes */}
+          {hottestResumes.length > 0 && (
+            <section className="mb-20">
+              <SectionHeader title="HOTTEST RESUMES" variant="secondary" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {hottestResumes.map(resume => (
+                  <ResumeCard key={resume.id} {...resume} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* The Arena */}
+          <section className="mb-20">
+            <SectionHeader 
+              title={searchQuery ? "SEARCH RESULTS" : "THE ARENA"}
+              extra={<div className="bg-primary-container px-4 py-1 comic-border font-headline uppercase font-black text-sm italic rotate-2">{searchQuery ? "FILTERED" : "LIVE FEED"}</div>}
+            />
+
+            {isLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {Array.from({ length: 6 }).map((_, i) => <ResumeCardSkeleton key={i} />)}
+              </div>
+            ) : resumes.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {resumes.map(resume => (
+                  <ResumeCard key={resume.id} {...resume} />
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="NO VICTIMS FOUND!"
+                description={searchQuery ? `We couldn't find any resumes matching "${searchQuery}". Maybe they're hiding?` : "The arena is currently empty. No one is brave enough to be roasted yet."}
+                action={searchQuery ? (
+                  <Button variant="outline" onClick={() => setSearchQuery("")}>CLEAR SEARCH</Button>
+                ) : (
+                  <Link to="/upload">
+                    <Button variant="primary">BE THE FIRST VICTIM</Button>
+                  </Link>
+                )}
+              />
+            )}
+
+            {/* Pagination */}
+            {!isLoading && (
+              <Pagination 
+                currentPage={currentPage} 
+                totalPages={totalPages} 
+                onPageChange={handlePageChange} 
+              />
+            )}
+          </section>
+        </>
+      )}
+
+      {/* FAB */}
+      <Link to="/upload" aria-label="Upload a new resume for roasting">
+        <motion.button 
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          aria-label="Upload a new resume"
+          className="fixed bottom-10 right-10 w-16 h-16 bg-secondary text-white rounded-full comic-border shadow-[4px_4px_0px_0px_#383835] flex items-center justify-center z-40"
+        >
           <Plus size={32} strokeWidth={4} />
-        </button>
+        </motion.button>
       </Link>
     </div>
   );
 };
-
-export default Home;
