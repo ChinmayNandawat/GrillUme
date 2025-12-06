@@ -12,6 +12,7 @@ import { useEffect, useState, ChangeEvent, useCallback, useMemo } from "react";
 import { getResumes } from "../services/api";
 import { Resume } from "../types";
 import { ITEMS_PER_PAGE } from "../constants";
+import { useDebounce } from "../components/hooks/useDebounce";
 
 export const Home = () => {
   // Single source of truth for the current view's resumes
@@ -22,11 +23,12 @@ export const Home = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   
+  const debouncedSearchQuery = useDebounce(searchQuery, 400);
 
   // Derive computed lists using memoization
   const hottestResumes = useMemo(() => {
     // Only show hottest resumes on the first page when not searching
-    if (currentPage !== 1 || searchQuery) return [];
+    if (currentPage !== 1 || debouncedSearchQuery) return [];
     return resumes
       .filter(r => r.isHot || r.isChampion)
       .sort((a, b) => {
@@ -35,7 +37,7 @@ export const Home = () => {
         return 0;
       })
       .slice(0, 3);
-  }, [resumes, currentPage, searchQuery]);
+  }, [resumes, currentPage, debouncedSearchQuery]);
 
   const totalPages = useMemo(() => Math.ceil(totalItems / ITEMS_PER_PAGE), [totalItems]);
 
@@ -43,7 +45,7 @@ export const Home = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const { data, total } = await getResumes(currentPage, ITEMS_PER_PAGE, searchQuery);
+      const { data, total } = await getResumes(currentPage, ITEMS_PER_PAGE, debouncedSearchQuery);
       setResumes(data);
       setTotalItems(total);
     } catch (err) {
@@ -52,7 +54,7 @@ export const Home = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, searchQuery]);
+  }, [currentPage, debouncedSearchQuery]);
 
   useEffect(() => {
     fetchResumes();
@@ -123,10 +125,10 @@ export const Home = () => {
           {/* The Arena */}
           <section className="mb-20">
             <SectionHeader 
-              title={searchQuery ? "SEARCH RESULTS" : "THE ARENA"}
-              extra={<div className="bg-primary-container px-4 py-1 comic-border font-headline uppercase font-black text-sm italic rotate-2">{searchQuery ? "FILTERED" : "LIVE FEED"}</div>}
+              title={debouncedSearchQuery ? "SEARCH RESULTS" : "THE ARENA"} 
+              extra={<div className="bg-primary-container px-4 py-1 comic-border font-headline uppercase font-black text-sm italic rotate-2">{debouncedSearchQuery ? "FILTERED" : "LIVE FEED"}</div>} 
             />
-
+            
             {isLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {Array.from({ length: 6 }).map((_, i) => <ResumeCardSkeleton key={i} />)}
@@ -138,10 +140,10 @@ export const Home = () => {
                 ))}
               </div>
             ) : (
-              <EmptyState
-                title="NO VICTIMS FOUND!"
-                description={searchQuery ? `We couldn't find any resumes matching "${searchQuery}". Maybe they're hiding?` : "The arena is currently empty. No one is brave enough to be roasted yet."}
-                action={searchQuery ? (
+              <EmptyState 
+                title="NO VICTIMS FOUND!" 
+                description={debouncedSearchQuery ? `We couldn't find any resumes matching "${debouncedSearchQuery}". Maybe they're hiding?` : "The arena is currently empty. No one is brave enough to be roasted yet."}
+                action={debouncedSearchQuery ? (
                   <Button variant="outline" onClick={() => setSearchQuery("")}>CLEAR SEARCH</Button>
                 ) : (
                   <Link to="/upload">
