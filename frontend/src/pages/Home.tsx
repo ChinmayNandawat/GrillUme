@@ -12,7 +12,7 @@ import { useEffect, useState, ChangeEvent, useCallback, useMemo } from "react";
 import { getResumes } from "../services/api";
 import { Resume } from "../types";
 import { ITEMS_PER_PAGE } from "../constants";
-import { useDebounce } from "../components/hooks/useDebounce";
+import { useDebounce } from "../hooks/useDebounce";
 
 export const Home = () => {
   // Single source of truth for the current view's resumes
