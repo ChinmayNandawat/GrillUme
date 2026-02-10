@@ -1,7 +1,8 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase';
 import { AuthRequest } from '../middleware/auth';
+import { AppError } from '../middleware/error';
 
 const parsePositiveInt = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseInt(value || '', 10);
@@ -198,5 +199,37 @@ export const getResumeById = async (req: Request, res: Response): Promise<void> 
   } catch (error) {
     console.error('Get resume by id error:', error);
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const uploadResumeFile = async (
+  req: AuthRequest & { file?: Express.Multer.File },
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.userId) {
+      next(new AppError(401, 'Unauthorized', 'AUTH_REQUIRED'));
+      return;
+    }
+
+    if (!req.file) {
+      next(new AppError(400, 'No file uploaded', 'FILE_REQUIRED'));
+      return;
+    }
+
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+    res.status(201).json({
+      file: {
+        originalName: req.file.originalname,
+        fileName: req.file.filename,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+        url: fileUrl,
+      },
+    });
+  } catch (error) {
+    next(error);
   }
 };
