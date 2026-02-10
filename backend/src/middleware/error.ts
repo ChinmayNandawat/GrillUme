@@ -83,6 +83,8 @@ export const errorHandler = (
     return;
   }
 
+  console.error('Unhandled non-Error throw:', err);
+
   res.status(500).json({
     success: false,
     error: {
