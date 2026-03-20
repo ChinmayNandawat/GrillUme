@@ -1,35 +1,63 @@
 import { Upload as UploadIcon, Edit, Rocket, Flame, AlertCircle } from "lucide-react";
 import { Button} from "../components/ui/Button";
 import { ErrorState } from "../components/ui/ErrorState";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { uploadResume } from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { EmptyState } from "../components/ui/EmptyState";
 import { useNavigate } from "react-router-dom";
 
 
 export const Upload = () => {
+  const { isAuthenticated, openAuthPanel } = useAuth();
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [title, setTitle] = useState("");
   const [field, setField] = useState("PRODUCT DESIGN");
   const [details, setDetails] = useState("");
   const [isClassified, setIsClassified] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleUpload = async () => {
+    if (!isAuthenticated) {
+      openAuthPanel();
+      return;
+    }
     if (!title.trim() || isUploading) return;
     
     setIsUploading(true);
     setError(null);
     try {
-      const newResume = await uploadResume({ title, field, details, isClassified });
+      const newResume = await uploadResume({
+        title,
+        field,
+        details,
+        isClassified,
+        file: selectedFile,
+      });
       navigate(`/roast/${newResume.id}`);
     } catch (err) {
       console.error("Failed to upload resume:", err);
-      setError("MISSION FAILURE! The upload was intercepted or failed to launch. Check your connection and try again.");
+      const message = err instanceof Error ? err.message : "MISSION FAILURE! Upload failed.";
+      setError(message);
     } finally {
       setIsUploading(false);
     }
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-4xl mx-auto py-20">
+        <EmptyState
+          title="LOGIN REQUIRED TO UPLOAD"
+          description="Browsing is open for everyone, but posting a resume requires sign in. Open the auth panel from the top bar and come back here."
+          action={<Button variant="secondary" onClick={openAuthPanel}>OPEN SIGN IN PANEL</Button>}
+        />
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -61,12 +89,28 @@ export const Upload = () => {
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Drop Zone */}
         <div className="lg:col-span-7 bg-white border-4 border-on-background p-2 shadow-[6px_6px_0px_0px_#383835] rounded-lg">
-          <div className="relative border-4 border-dashed border-on-background bg-background h-[400px] flex flex-col items-center justify-center group overflow-hidden cursor-pointer">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0] || null;
+              setSelectedFile(file);
+            }}
+          />
+          <div
+            className="relative border-4 border-dashed border-on-background bg-background h-[400px] flex flex-col items-center justify-center group overflow-hidden cursor-pointer"
+            onClick={() => fileInputRef.current?.click()}
+          >
             <div className="absolute inset-0 halftone-bg pointer-events-none"></div>
             <div className="z-10 text-center p-8 group-hover:scale-105 transition-transform">
               <UploadIcon size={80} className="text-primary mx-auto mb-4" strokeWidth={3} />
               <h2 className="text-3xl font-black font-headline uppercase mb-2">WHAM! DROP IT HERE</h2>
               <p className="text-on-surface-variant font-bold uppercase tracking-widest text-sm">PDF, PNG, OR JPG ONLY • MAX 10MB</p>
+              <p className="mt-3 text-sm font-bold uppercase tracking-wider bg-on-background text-background px-3 py-1 inline-block">
+                {selectedFile ? `Selected: ${selectedFile.name}` : "Tap to choose a file"}
+              </p>
             </div>
             <div className="absolute top-0 left-0 w-12 h-12 border-t-8 border-l-8 border-secondary"></div>
             <div className="absolute bottom-0 right-0 w-12 h-12 border-b-8 border-r-8 border-tertiary"></div>

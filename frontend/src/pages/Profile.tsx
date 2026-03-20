@@ -1,19 +1,26 @@
-import { FileText, Flame, Globe, LogOut, Award, User as UserIcon, Trophy, MessageSquareOff } from "lucide-react";
+import { FileText, Flame, Globe, LogOut, Award, User as UserIcon, Trophy, MessageSquareOff, Edit3, X, AlertTriangle } from "lucide-react";
 import { StatCard, StatCardSkeleton } from "../components/profile/StatCard";
 import { useEffect, useState, useCallback } from "react";
-import { getUserStats, getBattleScrolls } from "../services/api";
+import { getUserStats, getBattleScrolls, deleteResumeById, updateResumeById } from "../services/api";
 import { UserStats, BattleScroll } from "../types";
 import { Link } from "react-router-dom";
 import { BattleScrollCard, BattleScrollCardSkeleton } from "../components/profile/BattleScrollCard";
 import { ErrorState } from "../components/ui/ErrorState";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
+import { useAuth } from "../context/AuthContext";
 
 export const Profile = () => {
+  const { isAuthenticated, openAuthPanel, logout } = useAuth();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [battleScrolls, setBattleScrolls] = useState<BattleScroll[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMutating, setIsMutating] = useState(false);
+  const [editTargetId, setEditTargetId] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDetails, setEditDetails] = useState("");
 
   const fetchProfile = useCallback(async () => {
     setIsLoading(true);
@@ -34,8 +41,80 @@ export const Profile = () => {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
     fetchProfile();
-  }, [fetchProfile]);
+  }, [fetchProfile, isAuthenticated]);
+
+  const handleDeleteScroll = async (resumeId: string) => {
+    if (isMutating) return;
+    setDeleteTargetId(resumeId);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (isMutating || !deleteTargetId) return;
+
+    setIsMutating(true);
+    try {
+      await deleteResumeById(deleteTargetId);
+      await fetchProfile();
+      setDeleteTargetId(null);
+    } catch (mutationError) {
+      const message = mutationError instanceof Error ? mutationError.message : "Delete failed";
+      setError(message);
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const handleEditScroll = async (resumeId: string) => {
+    if (isMutating) return;
+    const scroll = battleScrolls.find((item) => item.id === resumeId);
+    const initialTitle = scroll ? scroll.name.replace(/\.pdf$/i, "") : "";
+
+    setEditTargetId(resumeId);
+    setEditTitle(initialTitle);
+    setEditDetails("");
+  };
+
+  const handleEditConfirm = async () => {
+    if (isMutating || !editTargetId) return;
+    if (!editTitle.trim()) {
+      setError("Title cannot be empty");
+      return;
+    }
+
+    setIsMutating(true);
+    try {
+      await updateResumeById(editTargetId, {
+        title: editTitle.trim(),
+        ...(editDetails.trim() ? { details: editDetails.trim() } : {}),
+      });
+      await fetchProfile();
+      setEditTargetId(null);
+      setEditTitle("");
+      setEditDetails("");
+    } catch (mutationError) {
+      const message = mutationError instanceof Error ? mutationError.message : "Update failed";
+      setError(message);
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-4xl mx-auto py-16">
+        <EmptyState
+          title="AUTHORIZATION REQUIRED"
+          description="Your roast profile is secured. Sign in from the top bar to view your stats and battle scrolls."
+          action={<Button variant="secondary" onClick={openAuthPanel}>SIGN IN TO CONTINUE</Button>}
+        />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -71,7 +150,7 @@ export const Profile = () => {
   if (error) {
     return (
       <div className="max-w-4xl mx-auto py-20">
-        <ErrorState
+        <ErrorState 
           title="ARCHIVE ERROR!"
           message={error}
           onRetry={fetchProfile}
@@ -145,11 +224,16 @@ export const Profile = () => {
         {battleScrolls.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {battleScrolls.map((scroll) => (
-              <BattleScrollCard key={scroll.id} scroll={scroll} />
+              <BattleScrollCard
+                key={scroll.id}
+                scroll={scroll}
+                onEdit={handleEditScroll}
+                onDelete={handleDeleteScroll}
+              />
             ))}
           </div>
         ) : (
-          <EmptyState
+          <EmptyState 
             title="NO SCROLLS DEPLOYED!" 
             description="Your arsenal is empty. Upload your first resume to start the battle!"
             icon={<MessageSquareOff size={64} className="text-outline opacity-20" />}
@@ -160,13 +244,112 @@ export const Profile = () => {
 
       {/* Danger Zone */}
       <section className="mt-20 border-t-4 border-on-background pt-12 text-center">
-        <Button variant="secondary" className="px-10 py-5 text-2xl italic" icon={<LogOut size={28} />}>
+        <Button variant="secondary" className="px-10 py-5 text-2xl italic" icon={<LogOut size={28} />} onClick={logout}>
           Retire from Heroics
         </Button>
         <p className="mt-4 font-body text-on-surface-variant uppercase tracking-widest text-xs font-bold">
           Warning: All your roasted glory will be saved, but the battle field awaits.
         </p>
       </section>
+
+      {editTargetId && (
+        <div className="fixed inset-0 z-[70] bg-on-background/55 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-xl bg-white border-4 border-on-background rounded-xl shadow-[8px_8px_0px_#383835] overflow-hidden">
+            <div className="bg-tertiary-container border-b-4 border-on-background px-5 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Edit3 size={20} />
+                <h3 className="font-headline font-black text-2xl uppercase tracking-tighter">Edit Resume</h3>
+              </div>
+              <button
+                className="text-on-background"
+                aria-label="Close edit modal"
+                onClick={() => {
+                  setEditTargetId(null);
+                  setEditTitle("");
+                  setEditDetails("");
+                }}
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest mb-2">Resume Title</label>
+                <input
+                  type="text"
+                  className="w-full border-4 border-on-background p-3 font-bold"
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  placeholder="e.g. Senior Backend Engineer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest mb-2">Details (Optional)</label>
+                <textarea
+                  rows={4}
+                  className="w-full border-4 border-on-background p-3 font-bold"
+                  value={editDetails}
+                  onChange={(event) => setEditDetails(event.target.value)}
+                  placeholder="Update short summary or focus area..."
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditTargetId(null);
+                    setEditTitle("");
+                    setEditDetails("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button variant="tertiary" onClick={handleEditConfirm} disabled={isMutating || !editTitle.trim()}>
+                  {isMutating ? "SAVING..." : "Save Changes"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTargetId && (
+        <div className="fixed inset-0 z-[70] bg-on-background/55 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white border-4 border-on-background rounded-xl shadow-[8px_8px_0px_#383835] overflow-hidden">
+            <div className="bg-secondary-container border-b-4 border-on-background px-5 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={20} />
+                <h3 className="font-headline font-black text-2xl uppercase tracking-tighter">Delete Resume?</h3>
+              </div>
+              <button
+                className="text-on-background"
+                aria-label="Close delete modal"
+                onClick={() => setDeleteTargetId(null)}
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5">
+              <p className="font-bold text-on-background">
+                This will permanently remove the selected resume and all associated roasts and votes.
+              </p>
+
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setDeleteTargetId(null)}>
+                  Keep It
+                </Button>
+                <Button variant="secondary" onClick={handleDeleteConfirm} disabled={isMutating}>
+                  {isMutating ? "DELETING..." : "Delete Forever"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
