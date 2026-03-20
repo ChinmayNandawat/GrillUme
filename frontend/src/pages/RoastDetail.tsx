@@ -8,8 +8,10 @@ import { useEffect, useState, useCallback } from "react";
 import { getResumeById, addRoast, voteRoast } from "../services/api";
 import { Resume, Roast } from "../types";
 import { MAX_ROAST_LENGTH } from "../constants";
+import { useAuth } from "../context/AuthContext";
 
 export const RoastDetail = () => {
+  const { isAuthenticated, openAuthPanel } = useAuth();
   const { id } = useParams<{ id: string }>();
   const [resume, setResume] = useState<Resume | null>(null);
   const [roasts, setRoasts] = useState<Roast[]>([]);
@@ -17,6 +19,7 @@ export const RoastDetail = () => {
   const [error, setError] = useState<string | null>(null);
   const [newRoastText, setNewRoastText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fireBoost, setFireBoost] = useState(0);
 
   const fetchDetail = useCallback(async () => {
     if (!id) return;
@@ -44,6 +47,12 @@ export const RoastDetail = () => {
 
   const handleRoastSubmit = async () => {
     if (!id || !newRoastText.trim() || isSubmitting || newRoastText.length > MAX_ROAST_LENGTH) return;
+
+    if (!isAuthenticated) {
+      setError("Please sign in from the top bar to post roasts.");
+      openAuthPanel();
+      return;
+    }
     
     setIsSubmitting(true);
     try {
@@ -61,19 +70,36 @@ export const RoastDetail = () => {
       }
     } catch (err) {
       console.error("Failed to add roast:", err);
-      // We could show a toast here, but for now we'll just log it
+      setError(err instanceof Error ? err.message : "Failed to add roast");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleVote = async (roastId: string, type: 'up' | 'down') => {
+    if (!isAuthenticated) {
+      setError("Please sign in from the top bar to vote on roasts.");
+      openAuthPanel();
+      return;
+    }
+
     try {
       const { likes } = await voteRoast(roastId, type);
       setRoasts(prev => prev.map(r => r.id === roastId ? { ...r, likes } : r));
     } catch (err) {
       console.error("Failed to vote:", err);
+      setError(err instanceof Error ? err.message : "Failed to vote");
     }
+  };
+
+  const handleFire = () => {
+    if (!isAuthenticated) {
+      setError("Please sign in from the top bar to fire up this resume.");
+      openAuthPanel();
+      return;
+    }
+
+    setFireBoost((prev) => prev + 1);
   };
 
   if (isLoading) {
@@ -107,6 +133,10 @@ export const RoastDetail = () => {
     );
   }
 
+  const isPdfResume = Boolean(resume.pdfUrl && resume.pdfUrl.toLowerCase().endsWith(".pdf"));
+  const baseFires = Number.parseInt(String(resume.fires).replace(/[^0-9-]/g, ""), 10) || 0;
+  const displayFires = String(baseFires + fireBoost);
+
   return (
     <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12">
       {/* Left Column: Resume Preview */}
@@ -117,12 +147,20 @@ export const RoastDetail = () => {
           </div>
           <div className="bg-on-background p-3 rounded-lg shadow-[6px_6px_0px_0px_#383835] overflow-hidden">
             <div className="bg-white border-4 border-on-background min-h-[800px] flex items-center justify-center relative">
-              <img 
-                src={/* resume.avatar ||  */"https://i.pinimg.com/236x/8d/c4/23/8dc423d06649dac62bc74d7c47cd8acb.jpg"} 
-                alt="Resume Preview" 
-                className="w-full h-auto object-cover opacity-90 grayscale hover:grayscale-0 transition-all duration-500"
-                referrerPolicy="no-referrer"
-              />
+              {isPdfResume ? (
+                <iframe
+                  src={resume.pdfUrl}
+                  title="Resume PDF Preview"
+                  className="w-full h-[800px] bg-white"
+                />
+              ) : (
+                <img 
+                  src={resume.pdfUrl || resume.avatar || "https://picsum.photos/seed/resume/800/1200"} 
+                  alt="Resume Preview" 
+                  className="w-full h-auto object-cover opacity-90 grayscale hover:grayscale-0 transition-all duration-500"
+                  referrerPolicy="no-referrer"
+                />
+              )}
               <div className="absolute inset-0 halftone-bg pointer-events-none"></div>
             </div>
           </div>
@@ -132,15 +170,23 @@ export const RoastDetail = () => {
           <div className="flex gap-4">
             <div className="flex items-center gap-2 bg-white border-2 border-on-background px-6 py-3 font-black uppercase text-sm tracking-widest shadow-[3px_3px_0px_0px_#383835]">
               <Flame size={20} className="text-secondary fill-secondary" />
-              {resume.fires} Fires
+              {displayFires} Fires
             </div>
-            <Button variant="secondary" className="px-8 py-3 text-sm" ariaLabel="Roast this resume">
-              ROAST
+            <Button variant="secondary" className="px-8 py-3 text-sm" ariaLabel="Fire up this resume" onClick={handleFire}>
+              FIRE
             </Button>
           </div>
-          <Button variant="tertiary" className="px-6 py-3 text-sm" icon={<ExternalLink size={18} />} ariaLabel="Open PDF document">
-            Open PDF
-          </Button>
+          {resume.pdfUrl ? (
+            <a href={resume.pdfUrl} target="_blank" rel="noreferrer">
+              <Button variant="tertiary" className="px-6 py-3 text-sm" icon={<ExternalLink size={18} />} ariaLabel="Open PDF document">
+                Open PDF
+              </Button>
+            </a>
+          ) : (
+            <Button variant="tertiary" className="px-6 py-3 text-sm" icon={<ExternalLink size={18} />} ariaLabel="Open PDF document" disabled>
+              No File
+            </Button>
+          )}
         </div>
       </div>
 
@@ -196,10 +242,10 @@ export const RoastDetail = () => {
               variant="secondary" 
               className="w-full py-4 shadow-[3px_3px_0px_0px_#383835]"
               onClick={handleRoastSubmit}
-              disabled={isSubmitting || !newRoastText.trim() || newRoastText.length > MAX_ROAST_LENGTH}
+              disabled={!isAuthenticated || isSubmitting || !newRoastText.trim() || newRoastText.length > MAX_ROAST_LENGTH}
               ariaLabel="Submit your roast"
             >
-              {isSubmitting ? "IMPACTING..." : "SEND IMPACT!"}
+              {!isAuthenticated ? "SIGN IN TO ROAST" : isSubmitting ? "IMPACTING..." : "SEND IMPACT!"}
             </Button>
           </div>
         </div>
