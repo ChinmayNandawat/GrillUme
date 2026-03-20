@@ -29,13 +29,18 @@ export const Home = () => {
   const hottestResumes = useMemo(() => {
     // Only show hottest resumes on the first page when not searching
     if (currentPage !== 1 || debouncedSearchQuery) return [];
+
+    const score = (resume: Resume): number => {
+      const fires = Number.parseInt(String(resume.fires).replace(/[^0-9-]/g, ""), 10) || 0;
+      const comments = Number.parseInt(String(resume.comments).replace(/[^0-9-]/g, ""), 10) || 0;
+      const championBoost = resume.isChampion ? 1000 : 0;
+      const hotBoost = resume.isHot ? 500 : 0;
+      return championBoost + hotBoost + fires * 3 + comments;
+    };
+
     return resumes
-      .filter(r => r.isHot || r.isChampion)
-      .sort((a, b) => {
-        if (a.isChampion && !b.isChampion) return -1;
-        if (!a.isChampion && b.isChampion) return 1;
-        return 0;
-      })
+      .slice()
+      .sort((a, b) => score(b) - score(a))
       .slice(0, 3);
   }, [resumes, currentPage, debouncedSearchQuery]);
 

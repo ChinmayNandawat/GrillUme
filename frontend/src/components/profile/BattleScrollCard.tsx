@@ -1,6 +1,7 @@
 import { FileText, Edit, Trash2 } from "lucide-react";
 import { BattleScroll } from "../../types";
 import { Skeleton } from "../ui/Skeleton";
+import { Link } from "react-router-dom";
 
 interface BattleScrollCardProps {
   key?: string | number;
@@ -15,20 +16,31 @@ export const BattleScrollCard = ({
   onDelete 
 }: BattleScrollCardProps) => {
   return (
-    <div className="bg-white border-4 border-on-background rounded-xl p-6 relative kinetic-shadow group">
+    <Link
+      to={`/roast/${scroll.id}`}
+      className="block bg-white border-4 border-on-background rounded-xl p-6 relative kinetic-shadow group hover:translate-y-[2px] hover:shadow-[3px_3px_0px_#383835] transition-all"
+    >
       <div className="flex justify-between items-start mb-4">
         <div className="w-12 h-12 bg-primary-container comic-border flex items-center justify-center -mt-10 -ml-10 rotate-[-12deg] shadow-[3px_3px_0px_0px_#383835]">
           <FileText size={24} strokeWidth={3} />
         </div>
         <div className="flex gap-2">
           <button 
-            onClick={() => onEdit?.(scroll.id)}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onEdit?.(scroll.id);
+            }}
             className="w-10 h-10 bg-white border-2 border-on-background flex items-center justify-center hover:bg-tertiary-container transition-colors"
           >
             <Edit size={20} />
           </button>
           <button 
-            onClick={() => onDelete?.(scroll.id)}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onDelete?.(scroll.id);
+            }}
             className="w-10 h-10 bg-white border-2 border-on-background flex items-center justify-center hover:bg-secondary-container transition-colors"
           >
             <Trash2 size={20} />
@@ -45,7 +57,7 @@ export const BattleScrollCard = ({
         </div>
         <span className="text-xs font-black uppercase tracking-widest opacity-60">{scroll.roasts} Recent Roasts</span>
       </div>
-    </div>
+    </Link>
   );
 };
 
