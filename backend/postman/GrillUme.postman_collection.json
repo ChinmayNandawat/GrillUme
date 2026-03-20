@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Roastume API",
-    "description": "Postman collection for Roastume backend APIs.",
+    "name": "grillume API",
+    "description": "Postman collection for grillume backend APIs.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_postman_id": "f523a8f9-fec9-4dff-bf7a-a50f5b9564a5"
   },
