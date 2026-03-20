@@ -1,5 +1,6 @@
 export interface Resume {
   id: string;
+  userId?: string;
   name: string;
   role: string;
   date: string;
@@ -15,6 +16,7 @@ export interface Resume {
 
 export interface Roast {
   id: string;
+  userId?: string;
   resumeId: string;
   user: string;
   text: string;
@@ -40,4 +42,12 @@ export interface BattleScroll {
   date: string;
   roasts: string;
   colors: string[];
+}
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  email: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
