@@ -218,7 +218,8 @@ export const uploadResumeFile = async (
       return;
     }
 
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    const filePath = `/uploads/${req.file.filename}`;
+    const absoluteUrl = `${req.protocol}://${req.get('host')}${filePath}`;
 
     res.status(201).json({
       file: {
@@ -226,7 +227,8 @@ export const uploadResumeFile = async (
         fileName: req.file.filename,
         mimeType: req.file.mimetype,
         size: req.file.size,
-        url: fileUrl,
+        url: filePath,
+        absoluteUrl,
       },
     });
   } catch (error) {
