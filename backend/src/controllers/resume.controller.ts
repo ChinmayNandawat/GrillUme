@@ -9,6 +9,72 @@ const parsePositiveInt = (value: string | undefined, fallback: number): number =
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+
+const withResumeMetrics = async (
+  resumes: ResumeRow[]
+): Promise<Array<ResumeRow & { roastsCount: number; burnsCount: number }>> => {
+  const resumeIds = resumes.map((resume) => resume.id);
+  const roastsByResumeId = new Map<string, number>();
+  const burnsByResumeId = new Map<string, number>();
+
+  if (resumeIds.length === 0) {
+    return resumes.map((resume) => ({ ...resume, roastsCount: 0, burnsCount: 0 }));
+  }
+
+  const { data: roasts, error: roastsError } = await supabase
+    .from('Roast')
+    .select('id,resumeId')
+    .in('resumeId', resumeIds);
+
+  if (roastsError) throw roastsError;
+
+  const roastList = roasts || [];
+  roastList.forEach((roast) => {
+    roastsByResumeId.set(roast.resumeId, (roastsByResumeId.get(roast.resumeId) || 0) + 1);
+  });
+
+  const roastIds = roastList.map((roast) => roast.id);
+  if (roastIds.length > 0) {
+    const { data: votes, error: votesError } = await supabase
+      .from('Vote')
+      .select('roastId,type')
+      .in('roastId', roastIds);
+
+    if (votesError) throw votesError;
+
+    const roastIdToResumeId = new Map(roastList.map((roast) => [roast.id, roast.resumeId]));
+
+    (votes || []).forEach((vote) => {
+      const resumeId = roastIdToResumeId.get(vote.roastId);
+      if (!resumeId) return;
+
+      const delta = vote.type === 'up' ? 1 : vote.type === 'down' ? -1 : 0;
+      if (delta === 0) return;
+
+      burnsByResumeId.set(resumeId, (burnsByResumeId.get(resumeId) || 0) + delta);
+    });
+  }
+
+  return resumes.map((resume) => ({
+    ...resume,
+    roastsCount: roastsByResumeId.get(resume.id) || 0,
+    burnsCount: burnsByResumeId.get(resume.id) || 0,
+  }));
+};
+
+
+type ResumeRow = {
+  id: string;
+  title: string;
+  field: string;
+  details: string;
+  isClassified: boolean;
+  fileUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+};
+
 export const getResumes = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const page = parsePositiveInt(req.query.page as string | undefined, 1);
@@ -103,6 +169,37 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
     next(error);
   }
 };
+
+
+export const getMyResumes = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      next(new AppError(401, 'Unauthorized', 'AUTH_REQUIRED'));
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('Resume')
+      .select('id,title,field,details,isClassified,fileUrl,createdAt,updatedAt,userId')
+      .eq('userId', userId)
+      .order('createdAt', { ascending: false });
+
+    if (error) throw error;
+
+    const resumesWithMetrics = await withResumeMetrics((data || []) as ResumeRow[]);
+
+    res.status(200).json({
+      data: resumesWithMetrics,
+      total: resumesWithMetrics.length,
+    });
+  } catch (error) {
+    console.error('Get my resumes error:', error);
+    next(error);
+  }
+};
+
 
 export const createResume = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

@@ -332,15 +332,13 @@ export const getUserStats = async (): Promise<UserStats> => {
 };
 
 export const getBattleScrolls = async (): Promise<BattleScroll[]> => {
-  const me = await requestJson<BackendMeResponse>("/api/auth/me", { method: "GET" }, true);
   const list = await requestJson<{ data: BackendResume[]; total: number }>(
-    "/api/resumes?page=1&limit=50",
+    "/api/resumes/mine",
     { method: "GET" },
-    false
+    true
   );
 
   return list.data
-    .filter((resume) => resume.userId === me.user.id)
     .map((resume) => ({
       id: resume.id,
       name: `${resume.title}.pdf`,
