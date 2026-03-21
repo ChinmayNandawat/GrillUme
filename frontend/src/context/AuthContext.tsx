@@ -1,7 +1,7 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { STORAGE_KEYS } from "../constants";
 import { AuthUser } from "../types";
-import { loginUser, registerUser, getCurrentUser } from "../services/api";
+import { loginUser, registerUser, getCurrentUser } from "../services/api.ts";
 
 type AuthContextValue = {
   user: AuthUser | null;

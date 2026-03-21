@@ -2,7 +2,7 @@ import { Upload as UploadIcon, Edit, Rocket, Flame, AlertCircle } from "lucide-r
 import { Button} from "../components/ui/Button";
 import { ErrorState } from "../components/ui/ErrorState";
 import { useRef, useState } from "react";
-import { uploadResume } from "../services/api";
+import { uploadResume } from "../services/api.ts";
 import { useAuth } from "../context/AuthContext";
 import { EmptyState } from "../components/ui/EmptyState";
 import { useNavigate } from "react-router-dom";

@@ -5,7 +5,7 @@ import { ErrorState } from "../components/ui/ErrorState";
 import { RoastBubble, RoastBubbleSkeleton } from "../components/roast/RoastBubble";
 import { useParams } from "react-router-dom";
 import { useEffect, useState, useCallback } from "react";
-import { getResumeById, addRoast, voteRoast } from "../services/api";
+import { getResumeById, addRoast, voteRoast } from "../services/api.ts";
 import { Resume, Roast } from "../types";
 import { MAX_ROAST_LENGTH } from "../constants";
 import { useAuth } from "../context/AuthContext";

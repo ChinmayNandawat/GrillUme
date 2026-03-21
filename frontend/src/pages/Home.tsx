@@ -9,7 +9,7 @@ import { Pagination } from "../components/ui/Pagination";
 import { ResumeCard, ResumeCardSkeleton } from "../components/roast/ResumeCard";
 import { Link } from "react-router-dom";
 import { useEffect, useState, ChangeEvent, useCallback, useMemo } from "react";
-import { getResumes } from "../services/api";
+import { getResumes } from "../services/api.ts";
 import { Resume } from "../types";
 import { ITEMS_PER_PAGE } from "../constants";
 import { useDebounce } from "../hooks/useDebounce";
