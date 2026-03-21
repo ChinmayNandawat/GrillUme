@@ -9,7 +9,7 @@ const parsePositiveInt = (value: string | undefined, fallback: number): number =
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-export const getResumes = async (req: Request, res: Response): Promise<void> => {
+export const getResumes = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const page = parsePositiveInt(req.query.page as string | undefined, 1);
     const limit = Math.min(parsePositiveInt(req.query.limit as string | undefined, 10), 50);
@@ -31,15 +31,76 @@ export const getResumes = async (req: Request, res: Response): Promise<void> => 
 
     if (error) throw error;
 
+    const resumes = data || [];
+    const resumeIds = resumes.map((resume) => resume.id);
+
+    const roastsByResumeId = new Map<string, number>();
+    const burnsByResumeId = new Map<string, number>();
+
+    if (resumeIds.length > 0) {
+      const { data: roasts, error: roastsError } = await supabase
+        .from('Roast')
+        .select('id,resumeId')
+        .in('resumeId', resumeIds);
+
+      if (roastsError) throw roastsError;
+
+      const roastList = roasts || [];
+      const roastIds = roastList.map((roast) => roast.id);
+
+      roastList.forEach((roast) => {
+        roastsByResumeId.set(roast.resumeId, (roastsByResumeId.get(roast.resumeId) || 0) + 1);
+      });
+
+      if (roastIds.length > 0) {
+        const { data: votes, error: votesError } = await supabase
+          .from('Vote')
+          .select('roastId,type')
+          .in('roastId', roastIds);
+
+        if (votesError) throw votesError;
+
+        const roastIdToResumeId = new Map(roastList.map((roast) => [roast.id, roast.resumeId]));
+
+        (votes || []).forEach((vote) => {
+          const resumeId = roastIdToResumeId.get(vote.roastId);
+          if (!resumeId) return;
+
+          const delta = vote.type === 'up' ? 1 : vote.type === 'down' ? -1 : 0;
+          if (delta === 0) return;
+
+          burnsByResumeId.set(resumeId, (burnsByResumeId.get(resumeId) || 0) + delta);
+        });
+      }
+    }
+
+    const [{ count: upvoteCount, error: upvoteCountError }, { count: downvoteCount, error: downvoteCountError }] =
+      await Promise.all([
+        supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('type', 'up'),
+        supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('type', 'down'),
+      ]);
+
+    if (upvoteCountError) throw upvoteCountError;
+    if (downvoteCountError) throw downvoteCountError;
+
+    const totalBurns = (upvoteCount || 0) - (downvoteCount || 0);
+
     res.status(200).json({
-      data: data || [],
+      data: resumes.map((resume) => ({
+        ...resume,
+        roastsCount: roastsByResumeId.get(resume.id) || 0,
+        burnsCount: burnsByResumeId.get(resume.id) || 0,
+      })),
       page,
       limit,
       total: count || 0,
+      metrics: {
+        totalBurns,
+      },
     });
   } catch (error) {
     console.error('Get resumes error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    next(error);
   }
 };
 

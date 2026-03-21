@@ -1,9 +1,10 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../config/supabase';
 import { AuthRequest } from '../middleware/auth';
 import crypto from 'crypto';
+import { AppError } from '../middleware/error';
 
 const getJwtSecret = (): string => {
   const secret = process.env.JWT_SECRET;
@@ -12,6 +13,94 @@ const getJwtSecret = (): string => {
   }
   return secret;
 };
+
+
+type UserStatsPayload = {
+  resumes: number;
+  roastsReceived: number;
+  burnsReceived: number;
+  globalRank: number;
+};
+
+
+const getLeaderboardStats = async (currentUserId: string): Promise<UserStatsPayload> => {
+  const [
+    { data: users, error: usersError },
+    { data: resumes, error: resumesError },
+    { data: roasts, error: roastsError },
+    { data: votes, error: votesError },
+  ] = await Promise.all([
+    supabase.from('User').select('id'),
+    supabase.from('Resume').select('id,userId'),
+    supabase.from('Roast').select('id,resumeId'),
+    supabase.from('Vote').select('roastId,type'),
+  ]);
+
+  if (usersError) throw usersError;
+  if (resumesError) throw resumesError;
+  if (roastsError) throw roastsError;
+  if (votesError) throw votesError;
+
+  const resumeList = resumes || [];
+  const roastList = roasts || [];
+  const voteList = votes || [];
+
+  const resumeCountByUserId = new Map<string, number>();
+  const resumeOwnerByResumeId = new Map<string, string>();
+  resumeList.forEach((resume) => {
+    resumeOwnerByResumeId.set(resume.id, resume.userId);
+    resumeCountByUserId.set(resume.userId, (resumeCountByUserId.get(resume.userId) || 0) + 1);
+  });
+
+  const resumeOwnerByRoastId = new Map<string, string>();
+  const roastsReceivedByUserId = new Map<string, number>();
+  roastList.forEach((roast) => {
+    const ownerId = resumeOwnerByResumeId.get(roast.resumeId);
+    if (!ownerId) return;
+
+    resumeOwnerByRoastId.set(roast.id, ownerId);
+    roastsReceivedByUserId.set(ownerId, (roastsReceivedByUserId.get(ownerId) || 0) + 1);
+  });
+
+  const burnsReceivedByUserId = new Map<string, number>();
+  voteList.forEach((vote) => {
+    const ownerId = resumeOwnerByRoastId.get(vote.roastId);
+    if (!ownerId) return;
+
+    const delta = vote.type === 'up' ? 1 : vote.type === 'down' ? -1 : 0;
+    if (delta === 0) return;
+
+    burnsReceivedByUserId.set(ownerId, (burnsReceivedByUserId.get(ownerId) || 0) + delta);
+  });
+
+  const leaderboard = (users || []).map((user) => {
+    const burnsReceived = burnsReceivedByUserId.get(user.id) || 0;
+    const roastsReceived = roastsReceivedByUserId.get(user.id) || 0;
+    return {
+      userId: user.id,
+      burnsReceived,
+      roastsReceived,
+    };
+  });
+
+  leaderboard.sort((a, b) => {
+    if (b.burnsReceived !== a.burnsReceived) return b.burnsReceived - a.burnsReceived;
+    if (b.roastsReceived !== a.roastsReceived) return b.roastsReceived - a.roastsReceived;
+    return a.userId.localeCompare(b.userId);
+  });
+
+  const currentIndex = leaderboard.findIndex((entry) => entry.userId === currentUserId);
+  const currentEntry = leaderboard[currentIndex] || { burnsReceived: 0, roastsReceived: 0 };
+
+  return {
+    resumes: resumeCountByUserId.get(currentUserId) || 0,
+    roastsReceived: currentEntry.roastsReceived,
+    burnsReceived: currentEntry.burnsReceived,
+    globalRank: currentIndex >= 0 ? currentIndex + 1 : leaderboard.length + 1,
+  };
+};
+
+
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -131,12 +220,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
+
+
+export const getMe = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const userId = req.userId;
 
     if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' });
+      next(new AppError(401, 'Unauthorized', 'AUTH_REQUIRED'));
       return;
     }
 
@@ -148,34 +239,15 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
 
     if (userError) {
       console.error('Database error finding user:', userError);
-      res.status(500).json({ message: 'Internal server error' });
-      return;
+      throw userError;
     }
 
     if (!user) {
-      res.status(401).json({ message: 'User not found or invalid token' });
+      next(new AppError(401, 'User not found or invalid token', 'INVALID_TOKEN'));
       return;
     }
 
-    // Get count of resumes
-    const { count: resumesCount, error: resumeError } = await supabase
-      .from('Resume')
-      .select('*', { count: 'exact', head: true })
-      .eq('userId', userId);
-      
-    if (resumeError) {
-      console.error('Database error getting resumes count:', resumeError);
-    }
-
-    // Get count of roasts
-    const { count: roastsCount, error: roastError } = await supabase
-      .from('Roast')
-      .select('*', { count: 'exact', head: true })
-      .eq('userId', userId);
-      
-    if (roastError) {
-      console.error('Database error getting roasts count:', roastError);
-    }
+    const computedStats = await getLeaderboardStats(userId);
 
     const { password: _, ...userWithoutPassword } = user;
 
@@ -183,13 +255,19 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
       user: {
         ...userWithoutPassword,
         _count: {
-          resumes: resumesCount || 0,
-          roasts: roastsCount || 0
-        }
+          resumes: computedStats.resumes,
+          roasts: computedStats.roastsReceived,
+        },
+      },
+      stats: {
+        resumes: computedStats.resumes,
+        roastsReceived: computedStats.roastsReceived,
+        burnsReceived: computedStats.burnsReceived,
+        globalRank: computedStats.globalRank,
       },
     });
   } catch (error) {
     console.error('GetMe error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    next(error);
   }
 };

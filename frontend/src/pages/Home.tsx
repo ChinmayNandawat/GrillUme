@@ -22,8 +22,10 @@ export const Home = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
+  const [totalBurns, setTotalBurns] = useState(0);
   
   const debouncedSearchQuery = useDebounce(searchQuery, 400);
+  const heroLevel = useMemo(() => Math.max(1, 1 + Math.floor(Math.max(0, totalBurns) / 25)), [totalBurns]);
 
   // Derive computed lists using memoization
   const hottestResumes = useMemo(() => {
@@ -50,9 +52,10 @@ export const Home = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const { data, total } = await getResumes(currentPage, ITEMS_PER_PAGE, debouncedSearchQuery);
+      const { data, total, metrics } = await getResumes(currentPage, ITEMS_PER_PAGE, debouncedSearchQuery);
       setResumes(data);
       setTotalItems(total);
+      setTotalBurns(metrics.totalBurns);
     } catch (err) {
       console.error("Failed to fetch resumes:", err);
       setError("The battle servers are currently under heavy fire. We couldn't retrieve the targets.");
@@ -81,12 +84,12 @@ export const Home = () => {
     <div className="max-w-screen-2xl mx-auto">
       <Hero 
         avatar="https://picsum.photos/seed/roastmaster/200"
-        level="LVL 42"
+        level={`LVL ${heroLevel}`}
         title="WELCOME BACK, ROASTMASTER!"
         subtitle="READY TO INCINERATE SOME DREAMS TODAY?"
         stats={[
-          { label: "BURNS", value: "1.2k" },
-          { label: "RANK", value: "#4", color: "text-tertiary" }
+          { label: "BURNS", value: `${Math.max(0, totalBurns)}` },
+          { label: "TARGETS", value: `${totalItems}`, color: "text-tertiary" }
         ]}
       />
 

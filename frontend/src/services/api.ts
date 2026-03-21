@@ -33,6 +33,8 @@ type BackendResume = {
   details: string;
   isClassified: boolean;
   fileUrl?: string | null;
+  roastsCount?: number;
+  burnsCount?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -43,6 +45,16 @@ type BackendRoast = {
   userId: string;
   text: string;
   createdAt: string;
+};
+
+type BackendMeResponse = {
+  user: AuthUser & { _count?: { resumes?: number; roasts?: number } };
+  stats?: {
+    resumes?: number;
+    roastsReceived?: number;
+    burnsReceived?: number;
+    globalRank?: number;
+  };
 };
 
 const formatDate = (isoDate: string): string => {
@@ -132,8 +144,8 @@ const mapResume = (resume: BackendResume, roastsCount = 0, likesCount = 0): Resu
   name: resume.title,
   role: resume.field,
   date: formatDate(resume.createdAt),
-  fires: String(likesCount),
-  comments: String(roastsCount),
+  fires: String(resume.burnsCount ?? likesCount),
+  comments: String(resume.burnsCount ?? roastsCount),
   avatar: `https://picsum.photos/seed/${resume.id}/300`,
   quote: resume.details,
   variant: pickVariant(resume.id),
@@ -204,13 +216,17 @@ export const getResumes = async (
   page = 1,
   limit = 6,
   query = ""
-): Promise<{ data: Resume[]; total: number }> => {
+): Promise<{ data: Resume[]; total: number; metrics: { totalBurns: number } }> => {
   const params = new URLSearchParams();
   params.set("page", String(page));
   params.set("limit", String(limit));
   if (query) params.set("query", query);
 
-  const response = await requestJson<{ data: BackendResume[]; total: number }>(
+  const response = await requestJson<{
+    data: BackendResume[];
+    total: number;
+    metrics?: { totalBurns?: number };
+  }>(
     `/api/resumes?${params.toString()}`,
     { method: "GET" },
     false
@@ -219,6 +235,9 @@ export const getResumes = async (
   return {
     data: response.data.map((resume) => mapResume(resume)),
     total: response.total,
+    metrics: {
+      totalBurns: response.metrics?.totalBurns ?? 0,
+    },
   };
 };
 
@@ -286,21 +305,26 @@ export const voteRoast = async (roastId: string, type: "up" | "down"): Promise<{
 };
 
 export const getUserStats = async (): Promise<UserStats> => {
-  const response = await requestJson<{ user: AuthUser & { _count?: { resumes?: number; roasts?: number } } }>(
-    "/api/auth/me",
-    { method: "GET" },
-    true
-  );
+  const response = await requestJson<BackendMeResponse>("/api/auth/me", { method: "GET" }, true);
 
-  const resumesCount = response.user._count?.resumes || 0;
-  const roastsCount = response.user._count?.roasts || 0;
+  const resumesCount = response.stats?.resumes ?? response.user._count?.resumes ?? 0;
+  const roastsReceived = response.stats?.roastsReceived ?? response.user._count?.roasts ?? 0;
+  const burnsReceived = response.stats?.burnsReceived ?? 0;
+  const globalRank = response.stats?.globalRank ?? 0;
 
   return {
     resumesOffered: String(resumesCount),
-    totalRoastsReceived: String(roastsCount),
-    globalRank: `#${Math.max(1, 999 - roastsCount)}`,
-    level: Math.max(1, 1 + Math.floor(roastsCount / 5)),
-    rankTitle: roastsCount > 20 ? "ROAST COMMANDER" : "ROAST CADET",
+    totalRoastsReceived: String(roastsReceived),
+    globalRank: globalRank > 0 ? `#${globalRank}` : "UNRANKED",
+    level: Math.max(1, 1 + Math.floor(Math.max(0, burnsReceived) / 10)),
+    rankTitle:
+      burnsReceived >= 100
+        ? "ROAST WARLORD"
+        : burnsReceived >= 40
+          ? "ROAST COMMANDER"
+          : burnsReceived >= 10
+            ? "ROAST SERGEANT"
+            : "ROAST CADET",
     name: response.user.username,
     role: "ROAST OPERATIVE",
     avatar: `https://picsum.photos/seed/${response.user.id}/300`,
@@ -308,7 +332,7 @@ export const getUserStats = async (): Promise<UserStats> => {
 };
 
 export const getBattleScrolls = async (): Promise<BattleScroll[]> => {
-  const me = await requestJson<{ user: AuthUser }>("/api/auth/me", { method: "GET" }, true);
+  const me = await requestJson<BackendMeResponse>("/api/auth/me", { method: "GET" }, true);
   const list = await requestJson<{ data: BackendResume[]; total: number }>(
     "/api/resumes?page=1&limit=50",
     { method: "GET" },
@@ -321,7 +345,7 @@ export const getBattleScrolls = async (): Promise<BattleScroll[]> => {
       id: resume.id,
       name: `${resume.title}.pdf`,
       date: formatDate(resume.createdAt),
-      roasts: "0",
+      roasts: String(resume.roastsCount ?? 0),
       colors: ["bg-primary-container", "bg-tertiary-container"],
     }));
 };
