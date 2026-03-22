@@ -3,10 +3,40 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase';
 import { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/error';
+import { env } from 'process';
+import path from 'path';
+import { cloudinary } from '../config/cloudinary';
+
+type ResumeRow = {
+  id: string;
+  title: string;
+  field: string;
+  details: string;
+  isClassified: boolean;
+  fileUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+};
+
 
 const parsePositiveInt = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseInt(value || '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const getStorageObjectPathFromUrl = (fileUrl?: string | null): string | null => {
+  if (!fileUrl) return null;
+
+  try {
+    const parsed = new URL(fileUrl);
+    const marker = `/storage/v1/object/public/${env.SUPABASE_RESUME_BUCKET}/`;
+    const markerIndex = parsed.pathname.indexOf(marker);
+    if (markerIndex === -1) return null;
+    return decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+  } catch {
+    return null;
+  }
 };
 
 
@@ -62,18 +92,6 @@ const withResumeMetrics = async (
   }));
 };
 
-
-type ResumeRow = {
-  id: string;
-  title: string;
-  field: string;
-  details: string;
-  isClassified: boolean;
-  fileUrl: string | null;
-  createdAt: string;
-  updatedAt: string;
-  userId: string;
-};
 
 export const getResumes = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -240,13 +258,13 @@ export const createResume = async (req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-export const deleteResume = async (req: AuthRequest, res: Response): Promise<void> => {
+export const deleteResume = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const userId = req.userId;
     const { id } = req.params;
 
     if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' });
+      next(new AppError(401, 'Unauthorized', 'AUTH_REQUIRED'));
       return;
     }
 
@@ -258,21 +276,52 @@ export const deleteResume = async (req: AuthRequest, res: Response): Promise<voi
 
     if (existingError) throw existingError;
     if (!existing) {
-      res.status(404).json({ message: 'Resume not found' });
+      next(new AppError(404, 'Resume not found', 'NOT_FOUND'));
       return;
     }
     if (existing.userId !== userId) {
-      res.status(403).json({ message: 'Forbidden' });
+      next(new AppError(403, 'Forbidden', 'FORBIDDEN'));
       return;
     }
+
+    const { data: resumeWithFile, error: resumeFileError } = await supabase
+      .from('Resume')
+      .select('fileUrl')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (resumeFileError) throw resumeFileError;
 
     const { error } = await supabase.from('Resume').delete().eq('id', id);
     if (error) throw error;
 
+    const cloudinaryAsset = getCloudinaryAssetFromUrl(resumeWithFile?.fileUrl as string | undefined);
+    if (cloudinaryAsset) {
+      try {
+        await cloudinary.uploader.destroy(cloudinaryAsset.publicId, {
+          resource_type: cloudinaryAsset.resourceType,
+        });
+      } catch (cloudinaryDeleteError) {
+        console.error('Cloudinary delete warning:', cloudinaryDeleteError);
+      }
+    }
+
+    const objectPath = getStorageObjectPathFromUrl(resumeWithFile?.fileUrl as string | undefined);
+    if (objectPath) {
+      const { error: storageDeleteError } = await supabase
+        .storage
+        .from(env.SUPABASE_RESUME_BUCKET || 'resumes')
+        .remove([objectPath]);
+
+      if (storageDeleteError) {
+        console.error('Storage delete warning:', storageDeleteError.message);
+      }
+    }
+
     res.status(204).send();
   } catch (error) {
     console.error('Delete resume error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    next(error);
   }
 };
 
@@ -376,20 +425,85 @@ export const uploadResumeFile = async (
       return;
     }
 
-    const filePath = `/uploads/${req.file.filename}`;
-    const absoluteUrl = `${req.protocol}://${req.get('host')}${filePath}`;
+    const uploaded = await uploadToCloudinary(req.file, req.userId);
 
     res.status(201).json({
       file: {
         originalName: req.file.originalname,
-        fileName: req.file.filename,
+        fileName: uploaded.publicId,
         mimeType: req.file.mimetype,
         size: req.file.size,
-        url: filePath,
-        absoluteUrl,
+        url: uploaded.secureUrl,
+        absoluteUrl: uploaded.secureUrl,
       },
     });
   } catch (error) {
+    if (error instanceof Error) {
+      next(new AppError(500, `Cloud storage upload failed: ${error.message}`, 'CLOUD_UPLOAD_FAILED'));
+      return;
+    }
     next(error);
   }
+};
+
+const getCloudinaryAssetFromUrl = (
+  fileUrl?: string | null
+): { publicId: string; resourceType: 'image' | 'video' | 'raw' } | null => {
+  if (!fileUrl) return null;
+
+  try {
+    const parsed = new URL(fileUrl);
+    if (!parsed.hostname.includes('res.cloudinary.com')) {
+      return null;
+    }
+
+    const match = parsed.pathname.match(/\/(image|video|raw)\/upload\/(?:v\d+\/)?(.+)\.[a-z0-9]+$/i);
+    if (!match?.[1] || !match?.[2]) {
+      return null;
+    }
+
+    return {
+      resourceType: match[1].toLowerCase() as 'image' | 'video' | 'raw',
+      publicId: match[2],
+    };
+  } catch {
+    return null;
+  }
+};
+
+const uploadToCloudinary = async (
+  file: Express.Multer.File,
+  userId: string
+): Promise<{ publicId: string; secureUrl: string }> => {
+  const extension = path.extname(file.originalname).toLowerCase() || '.bin';
+  const safeExtension = extension.replace(/[^a-z0-9]/gi, '') || 'bin';
+  const publicId = `${env.CLOUDINARY_FOLDER}/${userId}-${Date.now()}-${crypto.randomUUID()}`;
+  const isPdf = file.mimetype === 'application/pdf';
+  const resourceType: 'image' | 'raw' = isPdf ? 'raw' : 'image';
+
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        public_id: publicId,
+        resource_type: resourceType,
+        format: safeExtension,
+        type: 'upload',
+        access_mode: 'public',
+        overwrite: false,
+      },
+      (error, result) => {
+        if (error || !result?.secure_url) {
+          reject(error || new Error('Cloudinary upload failed'));
+          return;
+        }
+
+        resolve({
+          publicId: result.public_id,
+          secureUrl: result.secure_url,
+        });
+      }
+    );
+
+    uploadStream.end(file.buffer);
+  });
 };
