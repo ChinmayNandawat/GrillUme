@@ -107,7 +107,7 @@ const mapResume = (resume: BackendResume, roastsCount = 0, likesCount = 0): Resu
   role: resume.field,
   date: formatDate(resume.createdAt),
   fires: String(resume.burnsCount ?? likesCount),
-  comments: String(resume.burnsCount ?? roastsCount),
+  comments: String(resume.roastsCount ?? roastsCount),
   avatar: `https://picsum.photos/seed/${resume.id}/300`,
   quote: resume.details,
   variant: pickVariant(resume.id),
@@ -184,11 +184,7 @@ export const getResumes = async (
   params.set("limit", String(limit));
   if (query) params.set("query", query);
 
-  const response = await requestJson<{
-    data: BackendResume[];
-    total: number;
-    metrics?: { totalBurns?: number };
-  }>(
+  const response = await requestJson<BackendResumeListResponse>(
     `/api/resumes?${params.toString()}`,
     { method: "GET" },
     false
@@ -214,7 +210,7 @@ export const getResumeById = async (id: string): Promise<{ resume: Resume; roast
     const roastsWithLikes = await Promise.all(
       response.roasts.map(async (roast, index) => {
         try {
-          const votes = await requestJson<{ upvotes: number; downvotes: number }>(
+          const votes = await requestJson<BackendVotesSummary>(
             `/api/votes/roast/${roast.id}`,
             { method: "GET" },
             false
@@ -254,7 +250,7 @@ export const addRoast = async (resumeId: string, text: string): Promise<Roast> =
 };
 
 export const voteRoast = async (roastId: string, type: "up" | "down"): Promise<{ likes: number }> => {
-  const response = await requestJson<{ upvotes: number; downvotes: number }>(
+  const response = await requestJson<BackendVotesSummary>(
     "/api/votes",
     {
       method: "POST",
