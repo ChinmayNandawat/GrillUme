@@ -1,5 +1,14 @@
 import { STORAGE_KEYS } from "../constants";
 import { AuthUser, BattleScroll, Resume, Roast, UserStats } from "../types";
+import {
+  ApiErrorResponse,
+  AuthResponse,
+  BackendMeResponse,
+  BackendResume,
+  BackendResumeListResponse,
+  BackendRoast,
+  BackendVotesSummary,
+} from "./contracts";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
 const API_ORIGIN = (() => {
@@ -9,53 +18,6 @@ const API_ORIGIN = (() => {
     return "http://localhost:3001";
   }
 })();
-
-type ApiErrorResponse = {
-  success?: boolean;
-  error?: {
-    code?: string;
-    message?: string;
-    details?: unknown;
-  };
-  message?: string;
-};
-
-type AuthResponse = {
-  token: string;
-  user: AuthUser;
-};
-
-type BackendResume = {
-  id: string;
-  userId: string;
-  title: string;
-  field: string;
-  details: string;
-  isClassified: boolean;
-  fileUrl?: string | null;
-  roastsCount?: number;
-  burnsCount?: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type BackendRoast = {
-  id: string;
-  resumeId: string;
-  userId: string;
-  text: string;
-  createdAt: string;
-};
-
-type BackendMeResponse = {
-  user: AuthUser & { _count?: { resumes?: number; roasts?: number } };
-  stats?: {
-    resumes?: number;
-    roastsReceived?: number;
-    burnsReceived?: number;
-    globalRank?: number;
-  };
-};
 
 const formatDate = (isoDate: string): string => {
   const date = new Date(isoDate);
