@@ -29,21 +29,6 @@ app.use(
 );
 app.use(express.json());
 
-app.use('/uploads', (req, res, next) => {
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  res.setHeader('Access-Control-Allow-Origin', FRONTEND_URL);
-  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.removeHeader('X-Frame-Options');
-  res.removeHeader('Content-Security-Policy');
-  res.removeHeader('Cross-Origin-Opener-Policy');
-  res.removeHeader('Cross-Origin-Embedder-Policy');
-  next();
-});
-
-
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
-
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/resumes', resumeRoutes);
