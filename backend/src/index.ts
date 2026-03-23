@@ -1,29 +1,22 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import path from 'path';
+import { env } from './config/env';
 import authRoutes from './routes/auth.routes';
 import resumeRoutes from './routes/resume.routes';
 import roastRoutes from './routes/roast.routes';
 import voteRoutes from './routes/vote.routes';
 import { errorHandler, notFoundHandler } from './middleware/error';
 
-dotenv.config();
-
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET is required. Add it to server/.env before starting the server.');
-}
-
 const app = express();
-const PORT = process.env.PORT || 3001;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const PORT = env.PORT;
 
 // Middleware
 app.use(helmet());
 app.use(
   cors({
-    origin: FRONTEND_URL,
+    origin: env.allowedOrigins,
     credentials: true,
   })
 );

@@ -5,13 +5,10 @@ import { supabase } from '../config/supabase';
 import { AuthRequest } from '../middleware/auth';
 import crypto from 'crypto';
 import { AppError } from '../middleware/error';
+import { env } from '../config/env';
 
 const getJwtSecret = (): string => {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('Server is misconfigured: JWT_SECRET is missing');
-  }
-  return secret;
+  return env.JWT_SECRET;
 };
 
 

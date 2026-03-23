@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase';
 import { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/error';
-import { env } from 'process';
+import { env } from '../config/env';
 import path from 'path';
 import { cloudinary } from '../config/cloudinary';
 

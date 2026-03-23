@@ -7,6 +7,8 @@ const envSchema = z
     PORT: z.coerce.number().int().positive().default(3001),
     TRUST_PROXY: z.coerce.number().int().min(0).default(1),
     FRONTEND_URL: z.string().trim().min(1, 'FRONTEND_URL is required'),
+    DATABASE_URL: z.string().trim().min(1, 'DATABASE_URL is required'),
+    DIRECT_URL: z.string().trim().min(1, 'DIRECT_URL is required').optional(),
     JWT_SECRET: z.string().min(8, 'JWT_SECRET must be at least 8 characters'),
     SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL'),
     SUPABASE_SERVICE_KEY: z.string().min(1, 'SUPABASE_SERVICE_KEY is required'),

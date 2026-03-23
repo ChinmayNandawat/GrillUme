@@ -1,16 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { env } from '../config/env';
 
 export interface AuthRequest extends Request {
   userId?: string;
 }
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction): void => {
-  if (!process.env.JWT_SECRET) {
-    res.status(500).json({ message: 'Server configuration error: JWT secret is missing' });
-    return;
-  }
-
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
@@ -20,7 +16,7 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
   }
 
   try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET) as { userId: string };
+    const verified = jwt.verify(token, env.JWT_SECRET) as { userId: string };
     req.userId = verified.userId;
     next();
   } catch (error) {
