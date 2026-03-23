@@ -7,11 +7,11 @@ import { useParams } from "react-router-dom";
 import { useEffect, useState, useCallback } from "react";
 import { getResumeById, addRoast, voteRoast } from "../services/api.ts";
 import { Resume, Roast } from "../types";
-import { MAX_ROAST_LENGTH } from "../constants";
+import { MAX_FIRE_PER_USER_PER_RESUME, MAX_ROAST_LENGTH, STORAGE_KEYS } from "../constants";
 import { useAuth } from "../context/AuthContext";
 
 export const RoastDetail = () => {
-  const { isAuthenticated, openAuthPanel } = useAuth();
+  const { isAuthenticated, openAuthPanel, user } = useAuth();
   const { id } = useParams<{ id: string }>();
   const [resume, setResume] = useState<Resume | null>(null);
   const [roasts, setRoasts] = useState<Roast[]>([]);
@@ -20,6 +20,46 @@ export const RoastDetail = () => {
   const [newRoastText, setNewRoastText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fireBoost, setFireBoost] = useState(0);
+
+  const getStoredFireCount = useCallback((): number => {
+    if (typeof window === "undefined" || !user?.id || !id) return 0;
+
+    const key = `${user.id}:${id}`;
+    const raw = localStorage.getItem(STORAGE_KEYS.FIRE_COUNTS);
+    if (!raw) return 0;
+
+    try {
+      const parsed = JSON.parse(raw) as Record<string, number>;
+      const value = Number(parsed[key] || 0);
+      if (!Number.isFinite(value) || value < 0) return 0;
+      return Math.min(MAX_FIRE_PER_USER_PER_RESUME, Math.floor(value));
+    } catch {
+      return 0;
+    }
+  }, [id, user?.id]);
+
+  const storeFireCount = useCallback(
+    (count: number) => {
+      if (typeof window === "undefined" || !user?.id || !id) return;
+
+      const key = `${user.id}:${id}`;
+      const next = Math.min(MAX_FIRE_PER_USER_PER_RESUME, Math.max(0, Math.floor(count)));
+
+      let map: Record<string, number> = {};
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.FIRE_COUNTS);
+        if (raw) {
+          map = JSON.parse(raw) as Record<string, number>;
+        }
+      } catch {
+        map = {};
+      }
+
+      map[key] = next;
+      localStorage.setItem(STORAGE_KEYS.FIRE_COUNTS, JSON.stringify(map));
+    },
+    [id, user?.id]
+  );
 
   const fetchDetail = useCallback(async () => {
     if (!id) return;
@@ -44,6 +84,15 @@ export const RoastDetail = () => {
   useEffect(() => {
     fetchDetail();
   }, [fetchDetail]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id || !id) {
+      setFireBoost(0);
+      return;
+    }
+
+    setFireBoost(getStoredFireCount());
+  }, [getStoredFireCount, id, isAuthenticated, user?.id]);
 
   const handleRoastSubmit = async () => {
     if (!id || !newRoastText.trim() || isSubmitting || newRoastText.length > MAX_ROAST_LENGTH) return;
@@ -99,7 +148,15 @@ export const RoastDetail = () => {
       return;
     }
 
-    setFireBoost((prev) => prev + 1);
+    if (fireBoost >= MAX_FIRE_PER_USER_PER_RESUME) {
+      setError(`Fire limit reached. You can fire at most ${MAX_FIRE_PER_USER_PER_RESUME} times on this resume.`);
+      return;
+    }
+
+    const nextFireCount = Math.min(MAX_FIRE_PER_USER_PER_RESUME, fireBoost + 1);
+    setError(null);
+    setFireBoost(nextFireCount);
+    storeFireCount(nextFireCount);
   };
 
   if (isLoading) {
@@ -136,6 +193,7 @@ export const RoastDetail = () => {
   const isPdfResume = Boolean(resume.pdfUrl && resume.pdfUrl.toLowerCase().endsWith(".pdf"));
   const baseFires = Number.parseInt(String(resume.fires).replace(/[^0-9-]/g, ""), 10) || 0;
   const displayFires = String(baseFires + fireBoost);
+  const isFireLimitReached = fireBoost >= MAX_FIRE_PER_USER_PER_RESUME;
 
   return (
     <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12">
@@ -172,8 +230,16 @@ export const RoastDetail = () => {
               <Flame size={20} className="text-secondary fill-secondary" />
               {displayFires} Fires
             </div>
-            <Button variant="secondary" className="px-8 py-3 text-sm" ariaLabel="Fire up this resume" onClick={handleFire}>
-              FIRE
+            <Button
+              variant="secondary"
+              className="px-8 py-3 text-sm"
+              ariaLabel="Fire up this resume"
+              onClick={handleFire}
+              disabled={isAuthenticated && isFireLimitReached}
+            >
+              {isAuthenticated
+                ? `FIRE (${fireBoost}/${MAX_FIRE_PER_USER_PER_RESUME})`
+                : `FIRE (0/${MAX_FIRE_PER_USER_PER_RESUME})`}
             </Button>
           </div>
           {resume.pdfUrl ? (
