@@ -3,11 +3,12 @@ import { register, login, getMe } from '../controllers/auth.controller';
 import { authenticateToken } from '../middleware/auth';
 import { validateRequest } from '../middleware/validate';
 import { authLoginSchema, authRegisterSchema } from '../validation/schemas';
+import { authLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
-router.post('/register', validateRequest({ body: authRegisterSchema }), register);
-router.post('/login', validateRequest({ body: authLoginSchema }), login);
+router.post('/register', authLimiter, validateRequest({ body: authRegisterSchema }), register);
+router.post('/login', authLimiter, validateRequest({ body: authLoginSchema }), login);
 router.get('/me', authenticateToken, getMe);
 
 export default router;

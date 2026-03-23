@@ -8,9 +8,13 @@ import resumeRoutes from './routes/resume.routes';
 import roastRoutes from './routes/roast.routes';
 import voteRoutes from './routes/vote.routes';
 import { errorHandler, notFoundHandler } from './middleware/error';
+import { globalLimiter } from './middleware/rateLimiter';
 
 const app = express();
 const PORT = env.PORT;
+
+// Trust reverse proxy for accurate IP rate limiting
+app.set('trust proxy', env.TRUST_PROXY);
 
 // Middleware
 app.use(helmet());
@@ -21,6 +25,9 @@ app.use(
   })
 );
 app.use(express.json());
+
+// Apply global rate limiting to all API requests
+app.use('/api', globalLimiter);
 
 // Routes
 app.use('/api/auth', authRoutes);
