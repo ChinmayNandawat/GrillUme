@@ -7,8 +7,8 @@ import { uploadLimiter, actionLimiter } from '../middleware/rateLimiter';
 const router = Router();
 
 router.get('/', getResumes);
-router.get('/:id', getResumeById);
 router.get('/mine', authenticateToken, getMyResumes);
+router.get('/:id', getResumeById);
 router.post('/upload', authenticateToken, uploadLimiter, uploadResumeMiddleware.single('file'), uploadResumeFile);
 router.post('/', authenticateToken, actionLimiter, createResume);
 router.patch('/:id', authenticateToken, actionLimiter, updateResume);
