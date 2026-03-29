@@ -21,7 +21,6 @@ export const ResumeCard = ({
   id,
   name,
   role,
-  date,
   fires,
   comments,
   avatar,
