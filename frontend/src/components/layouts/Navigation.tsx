@@ -24,6 +24,7 @@ export const Navbar = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navLinks = [
     { name: "HOME", path: "/" },
@@ -112,12 +113,98 @@ export const Navbar = () => {
               </Button>
             )}
 
-            <button className="md:hidden text-on-background">
+            <button 
+              className="md:hidden text-on-background pl-4"
+              onClick={() => setIsMobileMenuOpen(true)}
+            >
               <Menu size={24} strokeWidth={3} />
             </button>
           </div>
         </div>
       </nav>
+
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="md:hidden fixed inset-0 z-[55] bg-on-background/50 backdrop-blur-sm transition-opacity"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Mobile Menu Panel */}
+      <div 
+        className={`md:hidden fixed top-0 right-0 bottom-0 z-[60] w-64 bg-background border-l-4 border-on-background shadow-[-4px_0px_0px_0px_rgba(56,56,53,1)] flex flex-col pt-20 pb-6 px-6 transform transition-transform duration-300 ease-in-out ${
+          isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="absolute top-4 right-6">
+          <button
+            className="text-on-background hover:scale-110 transition-transform"
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            <X size={28} strokeWidth={3} />
+          </button>
+        </div>
+        
+        <div className="flex flex-col gap-6 font-headline font-black uppercase tracking-tighter text-2xl mt-8">
+          {navLinks.map((link) => (
+            <Link
+              key={link.path}
+              to={link.path}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`
+                transition-all duration-100 
+                ${location.pathname === link.path
+                  ? "text-primary border-b-4 border-primary pb-1 inline-block w-max"
+                  : "text-on-background hover:text-secondary"}
+              `}
+            >
+              {link.name}
+            </Link>
+          ))}
+        </div>
+
+        <div className="mt-auto border-t-4 border-on-background pt-6">
+          {isAuthenticated ? (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <span className="font-headline text-base font-black uppercase tracking-widest text-on-background bg-primary-container px-3 py-1 comic-border overflow-hidden text-ellipsis whitespace-nowrap max-w-full">
+                  {user?.username}
+                </span>
+              </div>
+              <div className="flex flex-col gap-4 mt-2">
+                <Link 
+                  to="/profile" 
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center gap-2 text-primary hover:skew-x-[-6deg] hover:scale-105 transition-transform font-headline font-black uppercase"
+                >
+                  <User size={24} strokeWidth={3} /> Profile
+                </Link>
+                <button
+                  onClick={() => {
+                    logout();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 text-secondary hover:scale-105 transition-transform font-headline font-black uppercase"
+                >
+                  <LogOut size={24} strokeWidth={3} /> Logout
+                </button>
+              </div>
+            </div>
+          ) : (
+            <Button 
+              variant="secondary" 
+              className="w-full py-3 text-lg" 
+              onClick={() => {
+                openAuthPanel();
+                setIsMobileMenuOpen(false);
+              }}
+            >
+              SIGN IN
+            </Button>
+          )}
+        </div>
+      </div>
 
       {isAuthPanelOpen && (
         <div className="fixed inset-0 z-[60] flex items-start justify-end p-4 md:p-8 bg-on-background/50 backdrop-blur-sm">
