@@ -100,6 +100,25 @@ const requestJson = async <T>(
   return (await response.json()) as T;
 };
 
+export const checkBackendHealth = async (path = "/api/health", timeoutMs = 2500): Promise<boolean> => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    const response = await fetch(`${API_BASE_URL}${normalizedPath}`, {
+      method: "GET",
+      signal: controller.signal,
+      headers: createHeaders(false, false),
+    });
+    return response.ok;
+  } catch (_error) {
+    return false;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
 const mapResume = (resume: BackendResume, roastsCount = 0, likesCount = 0): Resume => ({
   id: resume.id,
   userId: resume.userId,
