@@ -62,7 +62,7 @@ export const Navbar = () => {
       <nav className="fixed top-0 w-full z-50 bg-background border-b-4 border-on-background shadow-[4px_4px_0px_0px_rgba(56,56,53,1)]">
         <div className="flex justify-between items-center w-full px-6 py-4 max-w-screen-2xl mx-auto">
           <div className="flex-1 flex justify-start">
-            <Link to="/" className="text-3xl font-black italic tracking-tighter text-on-background drop-shadow-[2px_2px_0px_#ffd709] font-headline uppercase flex items-center group">
+            <Link id="navbar-logo-anchor" to="/" className="text-3xl font-black italic tracking-tighter text-on-background drop-shadow-[2px_2px_0px_#ffd709] font-headline uppercase flex items-center group">
               <span>GRILL</span>
               <span className="text-secondary ml-1 mr-2 inline-block -rotate-12 group-hover:rotate-12 transition-transform duration-300 scale-125 drop-shadow-[2px_2px_0px_#000]">U</span>
               <span>ME</span>
@@ -297,15 +297,17 @@ export const Navbar = () => {
 };
 
 export const Footer = () => (
-  <footer className="bg-on-background w-full mt-12 border-t-4 border-secondary">
-    <div className="flex flex-col md:flex-row justify-between items-center w-full px-8 py-10 gap-4 max-w-screen-2xl mx-auto">
-      <div className="text-xl font-black text-background italic font-headline flex items-center gap-1 group cursor-default">
+  <footer className="bg-on-background w-full mt-8 border-t-4 border-secondary">
+    <div className="w-full px-5 md:px-8 py-6 max-w-screen-2xl mx-auto">
+      <div className="flex flex-col items-center justify-center text-center gap-2 md:gap-3 bg-on-background/40 rounded-2xl p-4 md:p-5">
+        <div className="text-xl md:text-2xl font-black text-background italic font-headline flex items-center gap-1 group cursor-default">
         <span>GRILL</span>
         <span className="text-secondary -rotate-12 group-hover:rotate-180 transition-transform duration-300 scale-110">U</span>
         <span>ME</span>
-      </div>
-      <div className="text-primary-container font-body text-xs tracking-[0.05rem] uppercase font-bold">
-        GRILLUME. MADE FOR FUN. TRY TO KEEP IT CIVIL, FOLKS.
+        </div>
+        <p className="max-w-2xl text-primary-container font-body text-xs md:text-sm tracking-[0.05rem] uppercase font-bold leading-snug">
+          MADE FOR FUN. TRY TO KEEP IT CIVIL, FOLKS.
+        </p>
       </div>
     </div>
   </footer>
