@@ -1,4 +1,5 @@
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { useEffect } from "react";
 import { Card } from "./Card";
 import { Button } from "./Button";
 
@@ -7,14 +8,27 @@ interface ErrorStateProps {
   message?: string;
   onRetry?: () => void;
   className?: string;
+  autoRetry?: boolean;
+  autoRetryIntervalMs?: number;
 }
 
 export const ErrorState = ({ 
   title = "BATTLE FAILED!", 
   message = "Something went wrong during the roast. The target escaped!", 
   onRetry,
-  className = "" 
+  className = "",
+  autoRetry = true,
+  autoRetryIntervalMs = 2000
 }: ErrorStateProps) => {
+  useEffect(() => {
+    if (autoRetry && onRetry) {
+      const interval = setInterval(() => {
+        onRetry();
+      }, autoRetryIntervalMs);
+      return () => clearInterval(interval);
+    }
+  }, [autoRetry, onRetry, autoRetryIntervalMs]);
+
   return (
     <Card className={`flex flex-col items-center justify-center py-20 px-8 text-center bg-secondary-container border-4 border-on-background kinetic-shadow ${className}`}>
       <div className="mb-6 p-6 bg-secondary text-white rounded-full comic-border rotate-6 shadow-[4px_4px_0px_0px_#383835]">
@@ -31,9 +45,9 @@ export const ErrorState = ({
           variant="secondary" 
           className="px-12 py-4 text-xl italic group"
           onClick={onRetry}
-          icon={<RefreshCw className="group-hover:rotate-180 transition-transform duration-500" size={24} />}
+          icon={<RefreshCw className={`group-hover:rotate-180 transition-transform duration-500 ${autoRetry ? 'animate-spin' : ''}`} size={24} />}
         >
-          RETRY MISSION
+          {autoRetry ? "RETRYING..." : "RETRY MISSION"}
         </Button>
       )}
     </Card>

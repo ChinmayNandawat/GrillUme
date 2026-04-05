@@ -92,7 +92,7 @@ export const SplashOverlay = ({ onRevealApp, onComplete }: SplashOverlayProps) =
   useEffect(() => {
     const timer = window.setInterval(() => {
       setLoadingMessageIndex((current) => (current + 1) % SPLASH_LOADING_MESSAGES.length);
-    }, 1350);
+    }, 4500);
 
     return () => window.clearInterval(timer);
   }, []);
@@ -270,7 +270,7 @@ export const SplashOverlay = ({ onRevealApp, onComplete }: SplashOverlayProps) =
                     className="h-full w-1/2 bg-[#F5C518]"
                     animate={{ x: ["-55%", "155%"] }}
                     transition={{
-                      duration: 0.75,
+                      duration: 2.5,
                       repeat: Number.POSITIVE_INFINITY,
                       ease: "easeInOut",
                     }}
