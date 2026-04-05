@@ -120,10 +120,6 @@ export const SplashOverlay = ({ onRevealApp, onComplete }: SplashOverlayProps) =
     return () => window.clearTimeout(timer);
   }, [canExit, hasExited, onComplete]);
 
-  const chaosAmplitude = useMemo(() => {
-    return Math.min(viewportWidth * 0.07, 72);
-  }, [viewportWidth]);
-
   const introScaleFactor = useMemo(() => {
     if (viewportWidth <= 360) return 0.46;
     if (viewportWidth <= 420) return 0.5;
