@@ -140,7 +140,7 @@ const mapResume = (resume: BackendResume, roastsCount = 0, likesCount = 0): Resu
 const mapRoast = (roast: BackendRoast, likes = 0, index = 0): Roast => ({
   id: roast.id,
   resumeId: roast.resumeId,
-  user: `@${roast.username}`,
+  user: roast.username ? `${roast.username}` : "unknown_user",
   text: roast.text,
   likes,
   variant: pickRoastVariant(roast.id),
