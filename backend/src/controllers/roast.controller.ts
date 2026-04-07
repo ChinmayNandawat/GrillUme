@@ -41,7 +41,23 @@ export const createRoast = async (req: AuthRequest, res: Response): Promise<void
     const { data, error } = await supabase.from('Roast').insert([payload]).select().single();
     if (error) throw error;
 
-    res.status(201).json({ roast: data });
+    const { data: roastAuthor, error: roastAuthorError } = await supabase
+      .from('User')
+      .select('username')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (roastAuthorError) throw roastAuthorError;
+
+    res.status(201).json({
+      roast: {
+        id: data.id,
+        text: data.text,
+        createdAt: data.createdAt,
+        resumeId: data.resumeId,
+        username: roastAuthor?.username || 'unknown_user',
+      },
+    });
   } catch (error) {
     console.error('Create roast error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -97,7 +113,27 @@ export const getRoastsByResumeId = async (req: Request, res: Response): Promise<
 
     if (error) throw error;
 
-    res.status(200).json({ roasts: roasts || [] });
+    const roastList = roasts || [];
+    const userIds = Array.from(new Set(roastList.map((roast) => roast.userId)));
+    const { data: users, error: usersError } = await supabase
+      .from('User')
+      .select('id,username')
+      .in('id', userIds);
+
+    if (usersError) throw usersError;
+
+    const usernameById = new Map<string, string>();
+    (users || []).forEach((user) => usernameById.set(user.id, user.username));
+
+    res.status(200).json({
+      roasts: roastList.map((roast) => ({
+        id: roast.id,
+        text: roast.text,
+        createdAt: roast.createdAt,
+        resumeId: roast.resumeId,
+        username: usernameById.get(roast.userId) || 'unknown_user',
+      })),
+    });
   } catch (error) {
     console.error('Get roasts by resume id error:', error);
     res.status(500).json({ message: 'Internal server error' });

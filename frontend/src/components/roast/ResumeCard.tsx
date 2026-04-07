@@ -10,7 +10,7 @@ interface ResumeCardProps {
   date: string;
   fires: string;
   comments: string;
-  avatar: string;
+  avatar?: string;
   quote?: string;
   variant?: "blue" | "red" | "green" | "yellow";
   isHot?: boolean;
@@ -69,12 +69,16 @@ export const ResumeCard = ({
       ) : null}
 
       <div className="flex items-center gap-4 mb-4">
-        <img 
-          className="w-20 h-20 rounded-full border-4 border-on-background object-cover shadow-[4px_4px_0px_#383835] shrink-0" 
-          src={avatar} 
-          alt={name} 
-          referrerPolicy="no-referrer"
-        />
+        {avatar ? (
+          <img 
+            className="w-20 h-20 rounded-full border-4 border-on-background object-cover shadow-[4px_4px_0px_#383835] shrink-0" 
+            src={avatar} 
+            alt={name} 
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="w-20 h-20 rounded-full border-4 border-on-background bg-surface-container-high shrink-0" />
+        )}
         <div className="flex flex-col justify-center">
           <h3 className="text-2xl font-headline font-black uppercase leading-none text-on-background mb-1">{name}</h3>
           <span className="text-xs font-bold uppercase tracking-widest opacity-70 text-on-background">{role}</span>

@@ -140,19 +140,55 @@ export const beginGoogleAuth = async (_req: Request, res: Response, next: NextFu
 
 export const completeGoogleAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { code } = req.body as { code: string };
+    const { code, accessToken, refreshToken, expiresAt } = req.body as {
+      code?: string;
+      accessToken?: string;
+      refreshToken?: string;
+      expiresAt?: number;
+    };
 
-    const { data, error } = await supabaseAuth.auth.exchangeCodeForSession(code);
-    if (error || !data?.session?.access_token || !data.user) {
-      throw new AppError(401, 'Google auth callback failed', 'GOOGLE_AUTH_CALLBACK_FAILED');
+    let resolvedAccessToken = accessToken || '';
+    let resolvedRefreshToken = refreshToken;
+    let resolvedExpiresAt = expiresAt;
+    let authUser: { id: string; app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> } | null = null;
+
+    if (code) {
+      const { data, error } = await supabaseAuth.auth.exchangeCodeForSession(code);
+      if (error || !data?.session?.access_token || !data.user) {
+        throw new AppError(401, 'Google auth callback failed', 'GOOGLE_AUTH_CALLBACK_FAILED');
+      }
+
+      resolvedAccessToken = data.session.access_token;
+      resolvedRefreshToken = data.session.refresh_token || undefined;
+      resolvedExpiresAt = data.session.expires_at || undefined;
+      authUser = {
+        id: data.user.id,
+        app_metadata: data.user.app_metadata as Record<string, unknown> | undefined,
+        user_metadata: data.user.user_metadata as Record<string, unknown> | undefined,
+      };
+    } else if (resolvedAccessToken) {
+      const { data, error } = await supabaseAdmin.auth.getUser(resolvedAccessToken);
+      if (error || !data.user) {
+        throw new AppError(401, 'Google auth token is invalid', 'GOOGLE_AUTH_CALLBACK_FAILED');
+      }
+      authUser = {
+        id: data.user.id,
+        app_metadata: data.user.app_metadata as Record<string, unknown> | undefined,
+        user_metadata: data.user.user_metadata as Record<string, unknown> | undefined,
+      };
+    } else {
+      throw new AppError(400, 'Missing callback payload', 'GOOGLE_AUTH_CALLBACK_FAILED');
     }
 
-    const provider = String(data.user.app_metadata?.provider || '');
+    const provider = String(authUser.app_metadata?.provider || '');
     if (provider !== 'google') {
       throw new AppError(403, 'Only Google sign in is allowed', 'GOOGLE_ONLY_AUTH');
     }
 
-    const profile = extractGoogleProfile(data.user);
+    const profile = extractGoogleProfile({
+      id: authUser.id,
+      user_metadata: authUser.user_metadata,
+    });
     const { data: existingUser, error: userError } = await supabase
       .from('User')
       .select('*')
@@ -163,9 +199,9 @@ export const completeGoogleAuth = async (req: Request, res: Response, next: Next
 
     if (!existingUser) {
       res.status(200).json({
-        accessToken: data.session.access_token,
-        refreshToken: data.session.refresh_token,
-        expiresAt: data.session.expires_at,
+        accessToken: resolvedAccessToken,
+        refreshToken: resolvedRefreshToken,
+        expiresAt: resolvedExpiresAt,
         onboardingRequired: true,
         pendingProfile: {
           googleUid: profile.googleUid,
@@ -177,9 +213,9 @@ export const completeGoogleAuth = async (req: Request, res: Response, next: Next
     }
 
     res.status(200).json({
-      accessToken: data.session.access_token,
-      refreshToken: data.session.refresh_token,
-      expiresAt: data.session.expires_at,
+      accessToken: resolvedAccessToken,
+      refreshToken: resolvedRefreshToken,
+      expiresAt: resolvedExpiresAt,
       onboardingRequired: !existingUser.onboardingComplete,
       user: existingUser,
     });

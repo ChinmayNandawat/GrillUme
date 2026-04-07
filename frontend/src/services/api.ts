@@ -2,12 +2,15 @@ import { STORAGE_KEYS } from "../constants";
 import { AuthUser, BattleScroll, Resume, Roast, UserStats } from "../types";
 import {
   ApiErrorResponse,
-  AuthResponse,
   BackendMeResponse,
   BackendResume,
   BackendResumeListResponse,
   BackendRoast,
   BackendVotesSummary,
+  CompleteOnboardingResponse,
+  GoogleAuthBeginResponse,
+  GoogleAuthCallbackResponse,
+  UsernameAvailabilityResponse,
 } from "./contracts";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
@@ -122,12 +125,13 @@ export const checkBackendHealth = async (path = "/api/health", timeoutMs = 2500)
 const mapResume = (resume: BackendResume, roastsCount = 0, likesCount = 0): Resume => ({
   id: resume.id,
   userId: resume.userId,
-  name: resume.title,
-  role: resume.field,
+  ownerUsername: resume.ownerUsername,
+  name: resume.ownerUsername ? `@${resume.ownerUsername}` : "@unknown_user",
+  role: resume.title,
   date: formatDate(resume.createdAt),
   fires: String(resume.burnsCount ?? likesCount),
   comments: String(resume.roastsCount ?? roastsCount),
-  avatar: `https://picsum.photos/seed/${resume.id}/300`,
+  avatar: resume.ownerAvatarUrl,
   quote: resume.details,
   variant: pickVariant(resume.id),
   pdfUrl: normalizeFileUrl(resume.fileUrl),
@@ -135,9 +139,8 @@ const mapResume = (resume: BackendResume, roastsCount = 0, likesCount = 0): Resu
 
 const mapRoast = (roast: BackendRoast, likes = 0, index = 0): Roast => ({
   id: roast.id,
-  userId: roast.userId,
   resumeId: roast.resumeId,
-  user: `@${roast.userId.slice(0, 8)}`,
+  user: `@${roast.username}`,
   text: roast.text,
   likes,
   variant: pickRoastVariant(roast.id),
@@ -162,30 +165,63 @@ const normalizeFileUrl = (rawUrl?: string | null): string | undefined => {
   }
 };
 
-export const registerUser = async (
-  username: string,
-  email: string,
-  password: string
-): Promise<AuthResponse> => {
-  return requestJson<AuthResponse>(
-    "/api/auth/register",
+export const beginGoogleSignIn = async (): Promise<GoogleAuthBeginResponse> => {
+  return requestJson<GoogleAuthBeginResponse>("/api/auth/google/url", { method: "GET" }, false);
+};
+
+export const completeGoogleSignIn = async (code: string): Promise<GoogleAuthCallbackResponse> => {
+  return requestJson<GoogleAuthCallbackResponse>(
+    "/api/auth/google/callback",
     {
       method: "POST",
-      body: JSON.stringify({ username, email, password }),
+      body: JSON.stringify({ code }),
     },
     false
   );
 };
 
-export const loginUser = async (email: string, password: string): Promise<AuthResponse> => {
-  return requestJson<AuthResponse>(
-    "/api/auth/login",
+export const completeGoogleSignInFromPayload = async (payload: {
+  code?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+}): Promise<GoogleAuthCallbackResponse> => {
+  return requestJson<GoogleAuthCallbackResponse>(
+    "/api/auth/google/callback",
     {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(payload),
     },
     false
   );
+};
+
+export const checkUsernameAvailability = async (
+  username: string
+): Promise<UsernameAvailabilityResponse> => {
+  const params = new URLSearchParams({ username });
+  return requestJson<UsernameAvailabilityResponse>(
+    `/api/auth/username-availability?${params.toString()}`,
+    { method: "GET" },
+    false
+  );
+};
+
+export const completeUsernameOnboarding = async (
+  username: string
+): Promise<CompleteOnboardingResponse> => {
+  return requestJson<CompleteOnboardingResponse>(
+    "/api/auth/onboarding/complete",
+    {
+      method: "POST",
+      body: JSON.stringify({ username }),
+    },
+    true
+  );
+};
+
+export const logoutSession = async (): Promise<void> => {
+  await requestJson<{ success: boolean }>("/api/auth/logout", { method: "POST" }, true);
 };
 
 export const getCurrentUser = async (): Promise<AuthUser> => {
@@ -302,9 +338,9 @@ export const getUserStats = async (): Promise<UserStats> => {
           : burnsReceived >= 10
             ? "ROAST SERGEANT"
             : "ROAST CADET",
-    name: response.user.username,
-    role: "ROAST OPERATIVE",
-    avatar: `https://picsum.photos/seed/${response.user.id}/300`,
+    name: response.user.googleDisplayName,
+    role: `@${response.user.username}`,
+    avatar: response.user.avatarUrl,
   };
 };
 

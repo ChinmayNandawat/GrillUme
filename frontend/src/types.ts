@@ -1,12 +1,13 @@
 export interface Resume {
   id: string;
+  ownerUsername?: string;
   userId?: string;
   name: string;
   role: string;
   date: string;
   fires: string;
   comments: string;
-  avatar: string;
+  avatar?: string;
   quote?: string;
   variant: "blue" | "red" | "green" | "yellow";
   isHot?: boolean;
@@ -16,7 +17,6 @@ export interface Resume {
 
 export interface Roast {
   id: string;
-  userId?: string;
   resumeId: string;
   user: string;
   text: string;
@@ -46,8 +46,11 @@ export interface BattleScroll {
 
 export interface AuthUser {
   id: string;
+  googleUid: string;
+  googleDisplayName: string;
   username: string;
-  email: string;
+  avatarUrl: string;
+  onboardingComplete: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

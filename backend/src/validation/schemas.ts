@@ -9,9 +9,16 @@ const optionalUrlSchema = z.preprocess(
   z.string().trim().url().nullable()
 );
 
-export const googleCallbackSchema = z.object({
-  code: z.string().trim().min(1, 'code is required'),
-});
+export const googleCallbackSchema = z
+  .object({
+    code: z.string().trim().min(1).optional(),
+    accessToken: z.string().trim().min(1).optional(),
+    refreshToken: z.string().trim().min(1).optional(),
+    expiresAt: z.coerce.number().int().positive().optional(),
+  })
+  .refine((payload) => Boolean(payload.code || payload.accessToken), {
+    message: 'Either code or accessToken is required',
+  });
 
 export const usernameAvailabilityQuerySchema = z.object({
   username: z
