@@ -66,6 +66,38 @@ const storeToken = (token: string | null): void => {
   localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
 };
 
+const getStoredRefreshCredentials = (): { refreshToken: string; expiresAt?: number } | null => {
+  if (typeof window === "undefined") return null;
+
+  const refreshToken = localStorage.getItem(STORAGE_KEYS.AUTH_REFRESH_TOKEN);
+  if (!refreshToken) return null;
+
+  const rawExpiresAt = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN_EXPIRES_AT);
+  const parsedExpiresAt = rawExpiresAt ? Number(rawExpiresAt) : NaN;
+
+  return {
+    refreshToken,
+    expiresAt: Number.isFinite(parsedExpiresAt) ? parsedExpiresAt : undefined,
+  };
+};
+
+const storeRefreshCredentials = (refreshToken: string | null, expiresAt?: number): void => {
+  if (typeof window === "undefined") return;
+
+  if (!refreshToken) {
+    localStorage.removeItem(STORAGE_KEYS.AUTH_REFRESH_TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN_EXPIRES_AT);
+    return;
+  }
+
+  localStorage.setItem(STORAGE_KEYS.AUTH_REFRESH_TOKEN, refreshToken);
+  if (typeof expiresAt === "number" && Number.isFinite(expiresAt)) {
+    localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN_EXPIRES_AT, String(expiresAt));
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN_EXPIRES_AT);
+  }
+};
+
 const storeOnboardingState = (
   onboardingRequired: boolean,
   pendingProfile: PendingGoogleProfile | null
@@ -99,6 +131,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setOnboardingRequired(false);
     setPendingProfile(null);
     storeToken(null);
+    storeRefreshCredentials(null);
     storeOnboardingState(false, null);
   };
 
@@ -168,6 +201,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     setToken(response.accessToken);
     storeToken(response.accessToken);
+
+    const existingRefresh = getStoredRefreshCredentials();
+    storeRefreshCredentials(
+      response.refreshToken ?? existingRefresh?.refreshToken ?? null,
+      response.expiresAt ?? existingRefresh?.expiresAt
+    );
 
     if (response.onboardingRequired || !response.user) {
       setUser(null);

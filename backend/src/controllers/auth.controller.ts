@@ -29,9 +29,41 @@ const extractGoogleProfile = (authUser: { id: string; user_metadata?: Record<str
   };
 };
 
-const getCallbackRedirectTo = (): string => {
-  const firstOrigin = env.allowedOrigins[0] || env.FRONTEND_URL;
-  return `${firstOrigin.replace(/\/$/, '')}/auth/callback`;
+const normalizeOrigin = (origin: string): string => origin.trim().replace(/\/$/, '');
+
+const getRequestOrigin = (req: Request): string | null => {
+  const headerOrigin = req.get('origin');
+  if (headerOrigin) {
+    return normalizeOrigin(headerOrigin);
+  }
+
+  const referer = req.get('referer');
+  if (referer) {
+    try {
+      return normalizeOrigin(new URL(referer).origin);
+    } catch {
+      // Ignore invalid referer values.
+    }
+  }
+
+  const host = req.get('x-forwarded-host') || req.get('host');
+  if (!host) return null;
+
+  const forwardedProto = req.get('x-forwarded-proto');
+  const proto = (forwardedProto ? forwardedProto.split(',')[0] : req.protocol || 'http').trim();
+  return normalizeOrigin(`${proto}://${host}`);
+};
+
+const getCallbackRedirectTo = (req: Request): string => {
+  const allowedOrigins = env.allowedOrigins.map(normalizeOrigin);
+  const requestOrigin = getRequestOrigin(req);
+
+  if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+    return `${requestOrigin}/auth/callback`;
+  }
+
+  const fallbackOrigin = allowedOrigins[0] || normalizeOrigin(env.FRONTEND_URL);
+  return `${fallbackOrigin}/auth/callback`;
 };
 
 const getLeaderboardStats = async (currentUserId: string): Promise<UserStatsPayload> => {
@@ -111,12 +143,12 @@ const getLeaderboardStats = async (currentUserId: string): Promise<UserStatsPayl
   };
 };
 
-export const beginGoogleAuth = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const beginGoogleAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { data, error } = await supabaseAuth.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: getCallbackRedirectTo(),
+        redirectTo: getCallbackRedirectTo(req),
         queryParams: {
           prompt: 'select_account',
           access_type: 'offline',

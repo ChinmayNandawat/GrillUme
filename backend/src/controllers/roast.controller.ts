@@ -114,6 +114,11 @@ export const getRoastsByResumeId = async (req: Request, res: Response): Promise<
     if (error) throw error;
 
     const roastList = roasts || [];
+    if (roastList.length === 0) {
+      res.status(200).json({ roasts: [] });
+      return;
+    }
+
     const userIds = Array.from(new Set(roastList.map((roast) => roast.userId)));
     const { data: users, error: usersError } = await supabase
       .from('User')
