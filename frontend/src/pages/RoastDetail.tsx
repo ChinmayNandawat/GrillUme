@@ -8,7 +8,7 @@ import { useEffect, useState, useCallback } from "react";
 import { getResumeById, addRoast, voteRoast } from "../services/api.ts";
 import { Resume, Roast } from "../types";
 import { MAX_FIRE_PER_USER_PER_RESUME, MAX_ROAST_LENGTH, STORAGE_KEYS } from "../constants";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/AuthContext.tsx";
 
 export const RoastDetail = () => {
   const { isAuthenticated, openAuthPanel, user } = useAuth();
@@ -191,6 +191,7 @@ export const RoastDetail = () => {
   }
 
   const isPdfResume = Boolean(resume.pdfUrl && resume.pdfUrl.toLowerCase().endsWith(".pdf"));
+  const previewImageUrl = !isPdfResume ? (resume.pdfUrl || resume.avatar || "") : "";
   const baseFires = Number.parseInt(String(resume.fires).replace(/[^0-9-]/g, ""), 10) || 0;
   const displayFires = String(baseFires + fireBoost);
   const isFireLimitReached = fireBoost >= MAX_FIRE_PER_USER_PER_RESUME;
@@ -211,13 +212,19 @@ export const RoastDetail = () => {
                   title="Resume PDF Preview"
                   className="w-full h-[800px] bg-white"
                 />
-              ) : (
+              ) : previewImageUrl ? (
                 <img 
-                  src={resume.pdfUrl || resume.avatar || "https://picsum.photos/seed/resume/800/1200"} 
+                  src={previewImageUrl} 
                   alt="Resume Preview" 
                   className="w-full h-auto object-cover opacity-90 grayscale hover:grayscale-0 transition-all duration-500"
                   referrerPolicy="no-referrer"
                 />
+              ) : (
+                <div className="w-full h-[800px] flex items-center justify-center bg-surface-container-high border-2 border-on-background text-center p-8">
+                  <p className="font-headline font-black uppercase tracking-wider text-on-background">
+                    No preview available for this resume.
+                  </p>
+                </div>
               )}
               <div className="absolute inset-0 halftone-bg pointer-events-none"></div>
             </div>

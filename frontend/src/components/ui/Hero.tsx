@@ -1,5 +1,5 @@
 interface HeroProps {
-  avatar: string;
+  avatar?: string;
   level: string;
   title: string;
   subtitle: string;
@@ -21,12 +21,16 @@ export const Hero = ({
       <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
         <div className="relative flex-shrink-0">
           <div className="w-24 h-24 comic-border bg-white flex items-center justify-center p-1">
-            <img 
-              src={avatar} 
-              alt={title} 
-              className="w-full h-full object-cover grayscale contrast-125"
-              referrerPolicy="no-referrer"
-            />
+            {avatar ? (
+              <img 
+                src={avatar} 
+                alt={title} 
+                className="w-full h-full object-cover grayscale contrast-125"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-full h-full bg-surface-container-high" />
+            )}
           </div>
           <div className="absolute -bottom-2 -right-2 bg-secondary text-white px-3 py-1 comic-border font-headline text-xs italic font-black">
             {level}

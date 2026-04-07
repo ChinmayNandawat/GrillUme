@@ -13,8 +13,11 @@ import { getResumes } from "../services/api.ts";
 import { Resume } from "../types";
 import { ITEMS_PER_PAGE } from "../constants";
 import { useDebounce } from "../hooks/useDebounce";
+import { useAuth } from "../context/AuthContext";
 
 export const Home = () => {
+  const { user, isAuthenticated } = useAuth();
+  const showHero = Boolean(isAuthenticated && user);
   // Single source of truth for the current view's resumes
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [totalItems, setTotalItems] = useState(0);
@@ -82,19 +85,21 @@ export const Home = () => {
 
   return (
     <div className="max-w-screen-2xl mx-auto">
-      <Hero 
-        avatar="https://picsum.photos/seed/roastmaster/200"
-        level={`LVL ${heroLevel}`}
-        title="WELCOME BACK, ROASTMASTER!"
-        subtitle="READY TO INCINERATE SOME DREAMS TODAY?"
-        stats={[
-          { label: "BURNS", value: `${Math.max(0, totalBurns)}` },
-          { label: "TARGETS", value: `${totalItems}`, color: "text-tertiary" }
-        ]}
-      />
+      {isAuthenticated && user && (
+        <Hero 
+          avatar={user.avatarUrl}
+          level={`LVL ${heroLevel}`}
+          title={`WELCOME BACK, ${user.googleDisplayName.toUpperCase()}!`}
+          subtitle="READY TO INCINERATE SOME DREAMS TODAY?"
+          stats={[
+            { label: "BURNS", value: `${Math.max(0, totalBurns)}` },
+            { label: "TARGETS", value: `${totalItems}`, color: "text-tertiary" }
+          ]}
+        />
+      )}
 
       {/* Search Section */}
-      <section className="mb-16 px-2">
+      <section className={`mb-16 px-2 ${showHero ? "" : "mt-8"}`}>
         <div className="relative max-w-2xl mx-auto">
           <div className="absolute -top-6 -left-2 bg-tertiary text-white px-4 py-1 comic-border font-headline text-lg uppercase italic z-10 -rotate-2">
             FIND A VICTIM...

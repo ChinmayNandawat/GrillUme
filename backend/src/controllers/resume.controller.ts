@@ -19,6 +19,12 @@ type ResumeRow = {
   userId: string;
 };
 
+type PublicUserRow = {
+  id: string;
+  username: string;
+  avatarUrl: string;
+};
+
 
 const parsePositiveInt = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseInt(value || '', 10);
@@ -37,6 +43,24 @@ const getStorageObjectPathFromUrl = (fileUrl?: string | null): string | null => 
   } catch {
     return null;
   }
+};
+
+const getPublicUserMap = async (userIds: string[]): Promise<Map<string, PublicUserRow>> => {
+  if (userIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from('User')
+    .select('id,username,avatarUrl')
+    .in('id', Array.from(new Set(userIds)));
+
+  if (error) throw error;
+
+  const map = new Map<string, PublicUserRow>();
+  (data || []).forEach((user) => {
+    map.set(user.id, user as PublicUserRow);
+  });
+
+  return map;
 };
 
 
@@ -168,10 +192,20 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
     if (downvoteCountError) throw downvoteCountError;
 
     const totalBurns = (upvoteCount || 0) - (downvoteCount || 0);
+    const publicUsers = await getPublicUserMap(resumes.map((resume) => resume.userId));
 
     res.status(200).json({
       data: resumes.map((resume) => ({
-        ...resume,
+        id: resume.id,
+        title: resume.title,
+        field: resume.field,
+        details: resume.details,
+        isClassified: resume.isClassified,
+        fileUrl: resume.fileUrl,
+        createdAt: resume.createdAt,
+        updatedAt: resume.updatedAt,
+        ownerUsername: publicUsers.get(resume.userId)?.username || 'unknown_user',
+        ownerAvatarUrl: publicUsers.get(resume.userId)?.avatarUrl || '',
         roastsCount: roastsByResumeId.get(resume.id) || 0,
         burnsCount: burnsByResumeId.get(resume.id) || 0,
       })),
@@ -399,9 +433,31 @@ export const getResumeById = async (req: Request, res: Response): Promise<void> 
 
     if (roastError) throw roastError;
 
+    const userMap = await getPublicUserMap([
+      resume.userId,
+      ...(roasts || []).map((roast) => roast.userId),
+    ]);
+
     res.status(200).json({
-      resume,
-      roasts: roasts || [],
+      resume: {
+        id: resume.id,
+        title: resume.title,
+        field: resume.field,
+        details: resume.details,
+        isClassified: resume.isClassified,
+        fileUrl: resume.fileUrl,
+        createdAt: resume.createdAt,
+        updatedAt: resume.updatedAt,
+        ownerUsername: userMap.get(resume.userId)?.username || 'unknown_user',
+        ownerAvatarUrl: userMap.get(resume.userId)?.avatarUrl || '',
+      },
+      roasts: (roasts || []).map((roast) => ({
+        id: roast.id,
+        text: roast.text,
+        createdAt: roast.createdAt,
+        resumeId: roast.resumeId,
+        username: userMap.get(roast.userId)?.username || 'unknown_user',
+      })),
     });
   } catch (error) {
     console.error('Get resume by id error:', error);

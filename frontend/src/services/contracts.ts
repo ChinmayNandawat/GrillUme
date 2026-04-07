@@ -10,19 +10,48 @@ export type ApiErrorResponse = {
   message?: string;
 };
 
-export type AuthResponse = {
-  token: string;
+export type GoogleAuthBeginResponse = {
+  url: string;
+  provider: "google";
+  prompt: "select_account";
+};
+
+export type PendingGoogleProfile = {
+  googleUid: string;
+  googleDisplayName: string;
+  avatarUrl: string;
+};
+
+export type GoogleAuthCallbackResponse = {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  onboardingRequired: boolean;
+  user?: AuthUser;
+  pendingProfile?: PendingGoogleProfile;
+};
+
+export type UsernameAvailabilityResponse = {
+  available: boolean;
+  username: string;
+  reason?: string;
+};
+
+export type CompleteOnboardingResponse = {
   user: AuthUser;
+  onboardingRequired: false;
 };
 
 export type BackendResume = {
   id: string;
-  userId: string;
+  userId?: string;
   title: string;
   field: string;
   details: string;
   isClassified: boolean;
   fileUrl?: string | null;
+  ownerUsername?: string;
+  ownerAvatarUrl?: string;
   roastsCount?: number;
   burnsCount?: number;
   createdAt: string;
@@ -32,7 +61,7 @@ export type BackendResume = {
 export type BackendRoast = {
   id: string;
   resumeId: string;
-  userId: string;
+  username: string;
   text: string;
   createdAt: string;
 };
