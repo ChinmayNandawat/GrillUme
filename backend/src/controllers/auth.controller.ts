@@ -1,16 +1,9 @@
 import { NextFunction, Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { supabase } from '../config/supabase';
-import { AuthRequest } from '../middleware/auth';
 import crypto from 'crypto';
+import { supabase, supabaseAdmin, supabaseAuth } from '../config/supabase';
+import { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/error';
 import { env } from '../config/env';
-
-const getJwtSecret = (): string => {
-  return env.JWT_SECRET;
-};
-
 
 type UserStatsPayload = {
   resumes: number;
@@ -19,6 +12,27 @@ type UserStatsPayload = {
   globalRank: number;
 };
 
+const USERNAME_REGEX = /^[a-z0-9_]{3,24}$/;
+
+const normalizeUsername = (value: string): string => value.trim().toLowerCase();
+
+const extractGoogleProfile = (authUser: { id: string; user_metadata?: Record<string, unknown> }) => {
+  const metadata = authUser.user_metadata || {};
+  const rawDisplayName =
+    metadata.full_name || metadata.name || metadata.user_name || metadata.preferred_username || 'Google User';
+  const rawAvatar = metadata.avatar_url || metadata.picture || metadata.photo_url || '';
+
+  return {
+    googleUid: authUser.id,
+    googleDisplayName: String(rawDisplayName).trim() || 'Google User',
+    avatarUrl: String(rawAvatar).trim(),
+  };
+};
+
+const getCallbackRedirectTo = (): string => {
+  const firstOrigin = env.allowedOrigins[0] || env.FRONTEND_URL;
+  return `${firstOrigin.replace(/\/$/, '')}/auth/callback`;
+};
 
 const getLeaderboardStats = async (currentUserId: string): Promise<UserStatsPayload> => {
   const [
@@ -97,127 +111,227 @@ const getLeaderboardStats = async (currentUserId: string): Promise<UserStatsPayl
   };
 };
 
-
-
-export const register = async (req: Request, res: Response): Promise<void> => {
+export const beginGoogleAuth = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { username, email, password } = req.body;
+    const { data, error } = await supabaseAuth.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: getCallbackRedirectTo(),
+        queryParams: {
+          prompt: 'select_account',
+          access_type: 'offline',
+        },
+      },
+    });
 
-    if (!username || !email || !password) {
-      res.status(400).json({ message: 'Missing required fields' });
-      return;
+    if (error || !data.url) {
+      throw new AppError(500, 'Failed to initialize Google sign in', 'GOOGLE_AUTH_INIT_FAILED');
     }
 
-    const { data: existingUsers, error: checkError } = await supabase
+    res.status(200).json({
+      url: data.url,
+      provider: 'google',
+      prompt: 'select_account',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const completeGoogleAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { code } = req.body as { code: string };
+
+    const { data, error } = await supabaseAuth.auth.exchangeCodeForSession(code);
+    if (error || !data?.session?.access_token || !data.user) {
+      throw new AppError(401, 'Google auth callback failed', 'GOOGLE_AUTH_CALLBACK_FAILED');
+    }
+
+    const provider = String(data.user.app_metadata?.provider || '');
+    if (provider !== 'google') {
+      throw new AppError(403, 'Only Google sign in is allowed', 'GOOGLE_ONLY_AUTH');
+    }
+
+    const profile = extractGoogleProfile(data.user);
+    const { data: existingUser, error: userError } = await supabase
       .from('User')
-      .select('id')
-      .or(`email.eq.${email},username.eq.${username}`)
-      .limit(1);
+      .select('*')
+      .eq('googleUid', profile.googleUid)
+      .maybeSingle();
 
-    if (checkError) throw checkError;
+    if (userError) throw userError;
 
-    if (existingUsers && existingUsers.length > 0) {
-      res.status(409).json({ message: 'Email or username already exists' });
+    if (!existingUser) {
+      res.status(200).json({
+        accessToken: data.session.access_token,
+        refreshToken: data.session.refresh_token,
+        expiresAt: data.session.expires_at,
+        onboardingRequired: true,
+        pendingProfile: {
+          googleUid: profile.googleUid,
+          googleDisplayName: profile.googleDisplayName,
+          avatarUrl: profile.avatarUrl,
+        },
+      });
       return;
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    res.status(200).json({
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      expiresAt: data.session.expires_at,
+      onboardingRequired: !existingUser.onboardingComplete,
+      user: existingUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    const newId = crypto.randomUUID();
+export const checkUsernameAvailability = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const rawUsername = String(req.query.username || '');
+    const username = normalizeUsername(rawUsername);
+
+    if (!USERNAME_REGEX.test(username)) {
+      res.status(200).json({
+        available: false,
+        username,
+        reason: 'Username must be 3-24 chars: lowercase letters, numbers, underscore',
+      });
+      return;
+    }
+
+    const { data, error } = await supabase.from('User').select('id').eq('username', username).maybeSingle();
+
+    if (error) throw error;
+
+    res.status(200).json({
+      available: !data,
+      username,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const completeOnboarding = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.authUid) {
+      throw new AppError(401, 'Unauthorized', 'AUTH_REQUIRED');
+    }
+
+    const username = normalizeUsername(String(req.body.username || ''));
+    if (!USERNAME_REGEX.test(username)) {
+      throw new AppError(
+        400,
+        'Username must be 3-24 chars: lowercase letters, numbers, underscore',
+        'INVALID_USERNAME'
+      );
+    }
+
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.getUserById(req.authUid);
+    if (authError || !authData?.user) {
+      throw new AppError(401, 'Invalid auth session', 'INVALID_AUTH_SESSION');
+    }
+
+    const provider = String(authData.user.app_metadata?.provider || '');
+    if (provider !== 'google') {
+      throw new AppError(403, 'Only Google sign in is allowed', 'GOOGLE_ONLY_AUTH');
+    }
+
+    const profile = extractGoogleProfile({
+      id: authData.user.id,
+      user_metadata: authData.user.user_metadata as Record<string, unknown> | undefined,
+    });
+
     const now = new Date().toISOString();
 
-    const { data: newUser, error: createError } = await supabase
+    const { data: existingByUid, error: existingByUidError } = await supabase
+      .from('User')
+      .select('*')
+      .eq('googleUid', profile.googleUid)
+      .maybeSingle();
+
+    if (existingByUidError) throw existingByUidError;
+
+    if (existingByUid?.onboardingComplete) {
+      res.status(200).json({ user: existingByUid, onboardingRequired: false });
+      return;
+    }
+
+    const { data: existingByUsername, error: existingByUsernameError } = await supabase
+      .from('User')
+      .select('id')
+      .eq('username', username)
+      .maybeSingle();
+
+    if (existingByUsernameError) throw existingByUsernameError;
+    if (existingByUsername && existingByUsername.id !== existingByUid?.id) {
+      throw new AppError(409, 'Username already taken', 'USERNAME_TAKEN');
+    }
+
+    if (existingByUid) {
+      const { data: updated, error: updateError } = await supabase
+        .from('User')
+        .update({
+          username,
+          googleDisplayName: profile.googleDisplayName,
+          avatarUrl: profile.avatarUrl,
+          onboardingComplete: true,
+          updatedAt: now,
+        })
+        .eq('id', existingByUid.id)
+        .select('*')
+        .single();
+
+      if (updateError) throw updateError;
+      res.status(200).json({ user: updated, onboardingRequired: false });
+      return;
+    }
+
+    const { data: inserted, error: insertError } = await supabase
       .from('User')
       .insert([
         {
-          id: newId,
+          id: crypto.randomUUID(),
+          googleUid: profile.googleUid,
+          googleDisplayName: profile.googleDisplayName,
           username,
-          email,
-          password: hashedPassword,
+          avatarUrl: profile.avatarUrl,
+          onboardingComplete: true,
           createdAt: now,
           updatedAt: now,
         },
       ])
-      .select()
+      .select('*')
       .single();
 
-    if (createError) throw createError;
-
-    const token = jwt.sign({ userId: newUser.id }, getJwtSecret(), {
-      expiresIn: '7d',
-    });
-
-    const { password: _, ...userWithoutPassword } = newUser;
-
-    res.status(201).json({
-      token,
-      user: userWithoutPassword,
-    });
-  } catch (error) {
-    console.error('Registration error FULL:', JSON.stringify(error, Object.getOwnPropertyNames(error as Error)));
-    if (error instanceof Error && error.message.includes('JWT_SECRET')) {
-      res.status(500).json({ message: 'Server configuration error: JWT secret is missing' });
-      return;
+    if (insertError) {
+      const duplicate = String((insertError as { code?: string }).code || '') === '23505';
+      if (duplicate) {
+        throw new AppError(409, 'Username already taken', 'USERNAME_TAKEN');
+      }
+      throw insertError;
     }
-    res.status(500).json({ message: 'Internal server error' });
+
+    res.status(200).json({ user: inserted, onboardingRequired: false });
+  } catch (error) {
+    next(error);
   }
 };
 
-export const login = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      res.status(400).json({ message: 'Missing required fields' });
-      return;
-    }
-
-    const { data: user, error } = await supabase
-      .from('User')
-      .select('*')
-      .eq('email', email)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Database error finding user:', error);
-      res.status(500).json({ message: 'Internal server error' });
-      return;
-    }
-
-    if (!user) {
-      res.status(401).json({ message: 'Invalid credentials' });
-      return;
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      res.status(401).json({ message: 'Invalid credentials' });
-      return;
-    }
-
-    const token = jwt.sign({ userId: user.id }, getJwtSecret(), {
-      expiresIn: '7d',
-    });
-
-    const { password: _, ...userWithoutPassword } = user;
-
-    res.status(200).json({
-      token,
-      user: userWithoutPassword,
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    if (error instanceof Error && error.message.includes('JWT_SECRET')) {
-      res.status(500).json({ message: 'Server configuration error: JWT secret is missing' });
-      return;
-    }
-    res.status(500).json({ message: 'Internal server error' });
-  }
+export const logout = async (_req: Request, res: Response): Promise<void> => {
+  res.status(200).json({ success: true });
 };
-
-
 
 export const getMe = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -235,7 +349,6 @@ export const getMe = async (req: AuthRequest, res: Response, next: NextFunction)
       .maybeSingle();
 
     if (userError) {
-      console.error('Database error finding user:', userError);
       throw userError;
     }
 
@@ -246,11 +359,9 @@ export const getMe = async (req: AuthRequest, res: Response, next: NextFunction)
 
     const computedStats = await getLeaderboardStats(userId);
 
-    const { password: _, ...userWithoutPassword } = user;
-
     res.status(200).json({
       user: {
-        ...userWithoutPassword,
+        ...user,
         _count: {
           resumes: computedStats.resumes,
           roasts: computedStats.roastsReceived,
@@ -264,7 +375,6 @@ export const getMe = async (req: AuthRequest, res: Response, next: NextFunction)
       },
     });
   } catch (error) {
-    console.error('GetMe error:', error);
     next(error);
   }
 };

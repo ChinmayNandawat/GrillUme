@@ -9,15 +9,24 @@ const optionalUrlSchema = z.preprocess(
   z.string().trim().url().nullable()
 );
 
-export const authRegisterSchema = z.object({
-  username: z.string().trim().min(3).max(50),
-  email: z.string().trim().email(),
-  password: z.string().min(8).max(128),
+export const googleCallbackSchema = z.object({
+  code: z.string().trim().min(1, 'code is required'),
 });
 
-export const authLoginSchema = z.object({
-  email: z.string().trim().email(),
-  password: z.string().min(8).max(128),
+export const usernameAvailabilityQuerySchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9_]{3,24}$/, 'Username must be 3-24 chars: lowercase letters, numbers, underscore'),
+});
+
+export const completeOnboardingSchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9_]{3,24}$/, 'Username must be 3-24 chars: lowercase letters, numbers, underscore'),
 });
 
 export const listResumesQuerySchema = z.object({
