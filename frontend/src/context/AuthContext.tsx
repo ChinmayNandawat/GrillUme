@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { STORAGE_KEYS } from "../constants";
 import { AuthUser } from "../types";
 import {
@@ -10,7 +10,7 @@ import {
 } from "../services/api";
 import { PendingGoogleProfile } from "../services/contracts";
 
-type AuthContextValue = {
+export type AuthContextValue = {
   user: AuthUser | null;
   token: string | null;
   isAuthenticated: boolean;
@@ -33,12 +33,10 @@ type AuthContextValue = {
   logout: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+// eslint-disable-next-line react-refresh/only-export-components
+export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const getStoredToken = (): string | null => {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
-};
+const SESSION_TOKEN_SENTINEL = "cookie-session";
 
 const getStoredPendingProfile = (): PendingGoogleProfile | null => {
   if (typeof window === "undefined") return null;
@@ -57,45 +55,11 @@ const getStoredOnboardingRequired = (): boolean => {
   return localStorage.getItem(STORAGE_KEYS.AUTH_ONBOARDING_REQUIRED) === "true";
 };
 
-const storeToken = (token: string | null): void => {
+const clearLegacyAuthStorage = (): void => {
   if (typeof window === "undefined") return;
-  if (!token) {
-    localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
-    return;
-  }
-  localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
-};
-
-const getStoredRefreshCredentials = (): { refreshToken: string; expiresAt?: number } | null => {
-  if (typeof window === "undefined") return null;
-
-  const refreshToken = localStorage.getItem(STORAGE_KEYS.AUTH_REFRESH_TOKEN);
-  if (!refreshToken) return null;
-
-  const rawExpiresAt = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN_EXPIRES_AT);
-  const parsedExpiresAt = rawExpiresAt ? Number(rawExpiresAt) : NaN;
-
-  return {
-    refreshToken,
-    expiresAt: Number.isFinite(parsedExpiresAt) ? parsedExpiresAt : undefined,
-  };
-};
-
-const storeRefreshCredentials = (refreshToken: string | null, expiresAt?: number): void => {
-  if (typeof window === "undefined") return;
-
-  if (!refreshToken) {
-    localStorage.removeItem(STORAGE_KEYS.AUTH_REFRESH_TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN_EXPIRES_AT);
-    return;
-  }
-
-  localStorage.setItem(STORAGE_KEYS.AUTH_REFRESH_TOKEN, refreshToken);
-  if (typeof expiresAt === "number" && Number.isFinite(expiresAt)) {
-    localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN_EXPIRES_AT, String(expiresAt));
-  } else {
-    localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN_EXPIRES_AT);
-  }
+  localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+  localStorage.removeItem(STORAGE_KEYS.AUTH_REFRESH_TOKEN);
+  localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN_EXPIRES_AT);
 };
 
 const storeOnboardingState = (
@@ -117,7 +81,7 @@ const storeOnboardingState = (
 };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [token, setToken] = useState<string | null>(getStoredToken());
+  const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -130,22 +94,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setOnboardingRequired(false);
     setPendingProfile(null);
-    storeToken(null);
-    storeRefreshCredentials(null);
+    clearLegacyAuthStorage();
     storeOnboardingState(false, null);
   };
 
   useEffect(() => {
     const bootstrapAuth = async () => {
-      const existingToken = getStoredToken();
-      if (!existingToken) {
-        setIsAuthLoading(false);
-        return;
-      }
+      clearLegacyAuthStorage();
 
       try {
         const currentUser = await getCurrentUser();
-        setToken(existingToken);
+        setToken(SESSION_TOKEN_SENTINEL);
         setUser(currentUser);
         setOnboardingRequired(false);
         setPendingProfile(null);
@@ -153,7 +112,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch (error) {
         const message = error instanceof Error ? error.message.toLowerCase() : "";
         if (message.includes("onboarding")) {
-          setToken(existingToken);
+          setToken(SESSION_TOKEN_SENTINEL);
           setUser(null);
           setOnboardingRequired(true);
           setPendingProfile(getStoredPendingProfile());
@@ -199,14 +158,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthError(null);
     const response = await completeGoogleSignInFromPayload(payload);
 
-    setToken(response.accessToken);
-    storeToken(response.accessToken);
-
-    const existingRefresh = getStoredRefreshCredentials();
-    storeRefreshCredentials(
-      response.refreshToken ?? existingRefresh?.refreshToken ?? null,
-      response.expiresAt ?? existingRefresh?.expiresAt
-    );
+    setToken(SESSION_TOKEN_SENTINEL);
 
     if (response.onboardingRequired || !response.user) {
       setUser(null);
@@ -234,7 +186,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async (): Promise<void> => {
     try {
-      if (token) {
+      if (token || user || onboardingRequired) {
         await logoutSession();
       }
     } catch {
@@ -245,54 +197,52 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      user,
-      token,
-      isAuthenticated: Boolean(token && user && !onboardingRequired),
-      isAuthLoading,
-      authError,
-      onboardingRequired,
-      pendingProfile,
-      isAuthPanelOpen,
-      openAuthPanel,
-      closeAuthPanel,
-      beginGoogleAuth: async () => {
-        try {
-          await beginGoogleAuthFlow();
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Google sign in failed";
-          setAuthError(message);
-          throw error;
-        }
-      },
-      clearAuthError: () => setAuthError(null),
-      handleGoogleCallback: async (payload) => {
-        try {
-          return await handleGoogleCallback(payload);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Google callback failed";
-          setAuthError(message);
-          throw error;
-        }
-      },
-      completeOnboarding: async (username) => {
-        try {
-          await completeOnboarding(username);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Onboarding failed";
-          setAuthError(message);
-          throw error;
-        }
-      },
-      logout,
-    }),
-    [user, token, isAuthLoading, authError, onboardingRequired, pendingProfile, isAuthPanelOpen]
-  );
+  const value: AuthContextValue = {
+    user,
+    token,
+    isAuthenticated: Boolean(user && !onboardingRequired),
+    isAuthLoading,
+    authError,
+    onboardingRequired,
+    pendingProfile,
+    isAuthPanelOpen,
+    openAuthPanel,
+    closeAuthPanel,
+    beginGoogleAuth: async () => {
+      try {
+        await beginGoogleAuthFlow();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Google sign in failed";
+        setAuthError(message);
+        throw error;
+      }
+    },
+    clearAuthError: () => setAuthError(null),
+    handleGoogleCallback: async (payload) => {
+      try {
+        return await handleGoogleCallback(payload);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Google callback failed";
+        setAuthError(message);
+        throw error;
+      }
+    },
+    completeOnboarding: async (username) => {
+      try {
+        await completeOnboarding(username);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Onboarding failed";
+        setAuthError(message);
+        throw error;
+      }
+    },
+    logout,
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = (): AuthContextValue => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -300,3 +250,4 @@ export const useAuth = (): AuthContextValue => {
   }
   return context;
 };
+

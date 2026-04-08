@@ -1,4 +1,3 @@
-import { STORAGE_KEYS } from "../constants";
 import { AuthUser, BattleScroll, Resume, Roast, UserStats } from "../types";
 import {
   ApiErrorResponse,
@@ -42,24 +41,11 @@ const pickRoastVariant = (seed: string): Roast["variant"] => {
   return variants[hash % variants.length];
 };
 
-const getAuthToken = (): string | null => {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
-};
-
-const createHeaders = (includeAuth = false, contentType = true): HeadersInit => {
+const createHeaders = (contentType = true): HeadersInit => {
   const headers: HeadersInit = {};
 
   if (contentType) {
     headers["Content-Type"] = "application/json";
-  }
-
-  if (includeAuth) {
-    const token = getAuthToken();
-    if (!token) {
-      throw new Error("Please login to continue");
-    }
-    headers["Authorization"] = `Bearer ${token}`;
   }
 
   return headers;
@@ -69,7 +55,7 @@ const parseError = async (response: Response): Promise<Error> => {
   let payload: ApiErrorResponse | null = null;
   try {
     payload = (await response.json()) as ApiErrorResponse;
-  } catch (_error) {
+  } catch {
     payload = null;
   }
 
@@ -86,12 +72,14 @@ const parseError = async (response: Response): Promise<Error> => {
 const requestJson = async <T>(
   path: string,
   options: RequestInit = {},
-  includeAuth = false
+  _includeAuth = false
 ): Promise<T> => {
+  void _includeAuth;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
-      ...createHeaders(includeAuth, true),
+      ...createHeaders(true),
       ...(options.headers || {}),
     },
   });
@@ -112,10 +100,11 @@ export const checkBackendHealth = async (path = "/api/health", timeoutMs = 2500)
     const response = await fetch(`${API_BASE_URL}${normalizedPath}`, {
       method: "GET",
       signal: controller.signal,
-      headers: createHeaders(false, false),
+      credentials: "include",
+      headers: createHeaders(false),
     });
     return response.ok;
-  } catch (_error) {
+  } catch {
     return false;
   } finally {
     window.clearTimeout(timeoutId);
@@ -271,7 +260,7 @@ export const getResumeById = async (id: string): Promise<{ resume: Resume; roast
             false
           );
           return mapRoast(roast, votes.upvotes - votes.downvotes, index);
-        } catch (_error) {
+        } catch {
           return mapRoast(roast, 0, index);
         }
       })
@@ -371,19 +360,12 @@ export const uploadResume = async (resumeData: {
   let fileUrl: string | null = null;
 
   if (resumeData.file) {
-    const token = getAuthToken();
-    if (!token) {
-      throw new Error("Please login to continue");
-    }
-
     const formData = new FormData();
     formData.append("file", resumeData.file);
 
     const uploadResponse = await fetch(`${API_BASE_URL}/api/resumes/upload`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      credentials: "include",
       body: formData,
     });
 
@@ -435,7 +417,8 @@ export const updateResumeById = async (
 export const deleteResumeById = async (resumeId: string): Promise<void> => {
   const response = await fetch(`${API_BASE_URL}/api/resumes/${resumeId}`, {
     method: "DELETE",
-    headers: createHeaders(true, false),
+    credentials: "include",
+    headers: createHeaders(false),
   });
 
   if (!response.ok) {

@@ -1,13 +1,11 @@
-import { Upload as UploadIcon, Edit, Rocket, Flame, AlertCircle } from "lucide-react";
-import { Button} from "../components/ui/Button";
+import { Upload as UploadIcon, Edit, Rocket, Flame } from "lucide-react";
+import { Button } from "../components/ui/Button";
 import { ErrorState } from "../components/ui/ErrorState";
 import { useRef, useState } from "react";
 import { uploadResume } from "../services/api.ts";
 import { useAuth } from "../context/AuthContext";
 import { EmptyState } from "../components/ui/EmptyState";
 import { useNavigate } from "react-router-dom";
-
-
 export const Upload = () => {
   const { isAuthenticated, openAuthPanel } = useAuth();
   const navigate = useNavigate();

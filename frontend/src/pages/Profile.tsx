@@ -1,4 +1,4 @@
-import { FileText, Flame, Globe, LogOut, Award, User as UserIcon, Trophy, MessageSquareOff, Edit3, X, AlertTriangle } from "lucide-react";
+import { FileText, Flame, Globe, LogOut, Award, MessageSquareOff, Edit3, X, AlertTriangle } from "lucide-react";
 import { StatCard, StatCardSkeleton } from "../components/profile/StatCard";
 import { useEffect, useState, useCallback } from "react";
 import { getUserStats, getBattleScrolls, deleteResumeById, updateResumeById } from "../services/api.ts";

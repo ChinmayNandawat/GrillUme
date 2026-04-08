@@ -25,13 +25,12 @@ export const SplashOverlay = ({ onRevealApp, onComplete }: SplashOverlayProps) =
 
   const [stage, setStage] = useState<IntroStage>("grill");
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
-  const [canExit, setCanExit] = useState(false);
   const [hasExited, setHasExited] = useState(false);
-  const [hasRevealedApp, setHasRevealedApp] = useState(false);
   const [startPosition, setStartPosition] = useState<LogoPosition>({ x: 0, y: 0 });
   const [targetPosition, setTargetPosition] = useState<LogoPosition>({ x: 30, y: 20 });
   const [viewportWidth, setViewportWidth] = useState(1366);
   const logoRef = useRef<HTMLDivElement | null>(null);
+  const hasRevealedAppRef = useRef(false);
 
   const updateLogoPositions = useCallback(() => {
     if (typeof window === "undefined" || !logoRef.current) return;
@@ -56,7 +55,9 @@ export const SplashOverlay = ({ onRevealApp, onComplete }: SplashOverlayProps) =
   }, []);
 
   useEffect(() => {
-    updateLogoPositions();
+    const initialTimer = window.setTimeout(() => {
+      updateLogoPositions();
+    }, 0);
 
     const resizeTimer = window.setTimeout(() => {
       updateLogoPositions();
@@ -65,6 +66,7 @@ export const SplashOverlay = ({ onRevealApp, onComplete }: SplashOverlayProps) =
     window.addEventListener("resize", updateLogoPositions);
     return () => {
       window.removeEventListener("resize", updateLogoPositions);
+      window.clearTimeout(initialTimer);
       window.clearTimeout(resizeTimer);
     };
   }, [updateLogoPositions]);
@@ -86,7 +88,11 @@ export const SplashOverlay = ({ onRevealApp, onComplete }: SplashOverlayProps) =
 
   useEffect(() => {
     if (stage === "fly" || stage === "loading") return;
-    updateLogoPositions();
+    const frameId = window.requestAnimationFrame(() => {
+      updateLogoPositions();
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [stage, updateLogoPositions]);
 
   useEffect(() => {
@@ -98,18 +104,13 @@ export const SplashOverlay = ({ onRevealApp, onComplete }: SplashOverlayProps) =
   }, []);
 
   useEffect(() => {
-    if (stage === "loading" && isHealthDone) {
-      setCanExit(true);
-    }
-  }, [isHealthDone, stage]);
-
-  useEffect(() => {
-    if (stage !== "loading" || hasRevealedApp) return;
+    if (stage !== "loading" || hasRevealedAppRef.current) return;
     onRevealApp();
-    setHasRevealedApp(true);
-  }, [hasRevealedApp, onRevealApp, stage]);
+    hasRevealedAppRef.current = true;
+  }, [onRevealApp, stage]);
 
   useEffect(() => {
+    const canExit = stage === "loading" && isHealthDone;
     if (!canExit || hasExited) return;
 
     const timer = window.setTimeout(() => {
@@ -118,7 +119,7 @@ export const SplashOverlay = ({ onRevealApp, onComplete }: SplashOverlayProps) =
     }, 390);
 
     return () => window.clearTimeout(timer);
-  }, [canExit, hasExited, onComplete]);
+  }, [hasExited, isHealthDone, onComplete, stage]);
 
   const introScaleFactor = useMemo(() => {
     if (viewportWidth <= 360) return 0.46;
@@ -150,7 +151,7 @@ export const SplashOverlay = ({ onRevealApp, onComplete }: SplashOverlayProps) =
         <motion.div
           className="fixed inset-0 z-[9999] overflow-hidden"
           initial={{ opacity: 1 }}
-          animate={{ opacity: canExit ? 0 : 1 }}
+          animate={{ opacity: stage === "loading" && isHealthDone ? 0 : 1 }}
           transition={{ duration: 0.51, ease: "easeInOut" }}
         >
           <motion.div
