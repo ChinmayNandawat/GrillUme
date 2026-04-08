@@ -107,7 +107,7 @@ export const Home = () => {
           <div className="flex comic-border bg-white kinetic-shadow overflow-hidden">
             <input 
               className="w-full bg-transparent border-none p-4 font-body font-bold placeholder:text-outline focus:ring-0 text-base uppercase" 
-              placeholder="SEARCH BY NAME, JOB, OR LEVEL OF HUBRIS..." 
+              placeholder="SEARCH BY USERNAME, TITLE, OR DESCRIPTION..." 
               type="text"
               value={searchQuery}
               onChange={handleSearch}

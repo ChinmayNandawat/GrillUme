@@ -63,6 +63,33 @@ const getPublicUserMap = async (userIds: string[]): Promise<Map<string, PublicUs
   return map;
 };
 
+const getMatchingUserIdsByUsername = async (query: string): Promise<string[]> => {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return [];
+
+  const { data, error } = await supabase
+    .from('User')
+    .select('id')
+    .ilike('username', `%${normalizedQuery}%`);
+
+  if (error) throw error;
+
+  return (data || []).map((user) => user.id);
+};
+
+const getGlobalTotalBurns = async (): Promise<number> => {
+  const [{ count: upvoteCount, error: upvoteCountError }, { count: downvoteCount, error: downvoteCountError }] =
+    await Promise.all([
+      supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('type', 'up'),
+      supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('type', 'down'),
+    ]);
+
+  if (upvoteCountError) throw upvoteCountError;
+  if (downvoteCountError) throw downvoteCountError;
+
+  return (upvoteCount || 0) - (downvoteCount || 0);
+};
+
 
 const withResumeMetrics = async (
   resumes: ResumeRow[]
@@ -124,6 +151,7 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
     const query = ((req.query.query as string | undefined) || '').trim();
     const from = (page - 1) * limit;
     const to = from + limit - 1;
+    const matchingUserIds = query ? await getMatchingUserIdsByUsername(query) : [];
 
     let supabaseQuery = supabase
       .from('Resume')
@@ -132,7 +160,13 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
       .range(from, to);
 
     if (query) {
-      supabaseQuery = supabaseQuery.or(`title.ilike.%${query}%,field.ilike.%${query}%`);
+      const searchParts = [`title.ilike.%${query}%`, `details.ilike.%${query}%`];
+
+      if (matchingUserIds.length > 0) {
+        searchParts.push(`userId.in.(${matchingUserIds.join(',')})`);
+      }
+
+      supabaseQuery = supabaseQuery.or(searchParts.join(','));
     }
 
     const { data, error, count } = await supabaseQuery;
@@ -182,16 +216,7 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
       }
     }
 
-    const [{ count: upvoteCount, error: upvoteCountError }, { count: downvoteCount, error: downvoteCountError }] =
-      await Promise.all([
-        supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('type', 'up'),
-        supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('type', 'down'),
-      ]);
-
-    if (upvoteCountError) throw upvoteCountError;
-    if (downvoteCountError) throw downvoteCountError;
-
-    const totalBurns = (upvoteCount || 0) - (downvoteCount || 0);
+    const totalBurns = await getGlobalTotalBurns();
     const publicUsers = await getPublicUserMap(resumes.map((resume) => resume.userId));
 
     res.status(200).json({
