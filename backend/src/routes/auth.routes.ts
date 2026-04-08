@@ -15,7 +15,7 @@ import {
 	googleCallbackSchema,
 	usernameAvailabilityQuerySchema,
 } from '../validation/schemas';
-import { actionLimiter, authLimiter } from '../middleware/rateLimiter';
+import { actionLimiter, authLimiter, globalLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -35,7 +35,7 @@ router.post(
 	completeOnboarding
 );
 router.get('/me', authenticateToken, getMe);
-router.post('/refresh', authLimiter, refreshSession);
+router.post('/refresh', globalLimiter, refreshSession);
 router.post('/logout', logout);
 
 export default router;

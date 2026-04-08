@@ -13,7 +13,7 @@ const REFRESH_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const sessionCookieOptions = {
   httpOnly: true,
   secure: env.isProduction,
-  sameSite: 'lax' as const,
+  sameSite: env.isProduction ? ('none' as const) : ('lax' as const),
   path: '/',
 };
 
