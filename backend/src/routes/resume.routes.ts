@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createResume, deleteResume, getResumeById, updateResume, getResumes, uploadResumeFile, getMyResumes} from '../controllers/resume.controller';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateOptionalToken, authenticateToken } from '../middleware/auth';
 import { uploadResumeMiddleware, validateUploadMagicBytes } from '../middleware/upload';
 import { uploadLimiter, actionLimiter } from '../middleware/rateLimiter';
 import { validateRequest } from '../middleware/validate';
@@ -10,7 +10,7 @@ const router = Router();
 
 router.get('/', validateRequest({ query: listResumesQuerySchema }), getResumes);
 router.get('/mine', authenticateToken, getMyResumes);
-router.get('/:id', getResumeById);
+router.get('/:id', authenticateOptionalToken, getResumeById);
 router.post('/upload', authenticateToken, uploadLimiter, uploadResumeMiddleware.single('file'), validateUploadMagicBytes, uploadResumeFile);
 router.post('/', authenticateToken, actionLimiter, createResume);
 router.patch('/:id', authenticateToken, actionLimiter, updateResume);

@@ -79,16 +79,9 @@ const getMatchingUserIdsByUsername = async (query: string): Promise<string[]> =>
 };
 
 const getGlobalTotalBurns = async (): Promise<number> => {
-  const [{ count: upvoteCount, error: upvoteCountError }, { count: downvoteCount, error: downvoteCountError }] =
-    await Promise.all([
-      supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('type', 'up'),
-      supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('type', 'down'),
-    ]);
-
-  if (upvoteCountError) throw upvoteCountError;
-  if (downvoteCountError) throw downvoteCountError;
-
-  return (upvoteCount || 0) - (downvoteCount || 0);
+  const { count, error } = await supabase.from('Vote').select('*', { count: 'exact', head: true });
+  if (error) throw error;
+  return count || 0;
 };
 
 
@@ -129,11 +122,7 @@ const withResumeMetrics = async (
     (votes || []).forEach((vote) => {
       const resumeId = roastIdToResumeId.get(vote.roastId);
       if (!resumeId) return;
-
-      const delta = vote.type === 'up' ? 1 : vote.type === 'down' ? -1 : 0;
-      if (delta === 0) return;
-
-      burnsByResumeId.set(resumeId, (burnsByResumeId.get(resumeId) || 0) + delta);
+      burnsByResumeId.set(resumeId, (burnsByResumeId.get(resumeId) || 0) + 1);
     });
   }
 
@@ -226,11 +215,7 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
         (votes || []).forEach((vote) => {
           const resumeId = roastIdToResumeId.get(vote.roastId);
           if (!resumeId) return;
-
-          const delta = vote.type === 'up' ? 1 : vote.type === 'down' ? -1 : 0;
-          if (delta === 0) return;
-
-          burnsByResumeId.set(resumeId, (burnsByResumeId.get(resumeId) || 0) + delta);
+          burnsByResumeId.set(resumeId, (burnsByResumeId.get(resumeId) || 0) + 1);
         });
       }
     }
@@ -453,9 +438,10 @@ export const updateResume = async (req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-export const getResumeById = async (req: Request, res: Response): Promise<void> => {
+export const getResumeById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    const userId = req.userId;
 
     const { data: resume, error: resumeError } = await supabase
       .from('Resume')
@@ -477,9 +463,39 @@ export const getResumeById = async (req: Request, res: Response): Promise<void> 
 
     if (roastError) throw roastError;
 
+    const roastList = roasts || [];
+    const roastIds = roastList.map((roast) => roast.id);
+
+    const reactionCountByRoastId = new Map<string, number>();
+    const reactedByMeSet = new Set<string>();
+
+    if (roastIds.length > 0) {
+      const [{ data: reactions, error: reactionsError }, { data: myReactions, error: myReactionsError }] =
+        await Promise.all([
+          supabase.from('Vote').select('roastId').in('roastId', roastIds),
+          userId
+            ? supabase.from('Vote').select('roastId').eq('userId', userId).in('roastId', roastIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+
+      if (reactionsError) throw reactionsError;
+      if (myReactionsError) throw myReactionsError;
+
+      (reactions || []).forEach((reaction) => {
+        reactionCountByRoastId.set(
+          reaction.roastId,
+          (reactionCountByRoastId.get(reaction.roastId) || 0) + 1
+        );
+      });
+
+      (myReactions || []).forEach((reaction) => {
+        reactedByMeSet.add(reaction.roastId);
+      });
+    }
+
     const userMap = await getPublicUserMap([
       resume.userId,
-      ...(roasts || []).map((roast) => roast.userId),
+      ...roastList.map((roast) => roast.userId),
     ]);
 
     res.status(200).json({
@@ -495,12 +511,14 @@ export const getResumeById = async (req: Request, res: Response): Promise<void> 
         ownerUsername: userMap.get(resume.userId)?.username || 'unknown_user',
         ownerAvatarUrl: userMap.get(resume.userId)?.avatarUrl || '',
       },
-      roasts: (roasts || []).map((roast) => ({
+      roasts: roastList.map((roast) => ({
         id: roast.id,
         text: roast.text,
         createdAt: roast.createdAt,
         resumeId: roast.resumeId,
         username: userMap.get(roast.userId)?.username || 'unknown_user',
+        reactionCount: reactionCountByRoastId.get(roast.id) || 0,
+        reactedByMe: reactedByMeSet.has(roast.id),
       })),
     });
   } catch (error) {

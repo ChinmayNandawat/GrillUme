@@ -5,14 +5,11 @@ export const STORAGE_KEYS = {
   BATTLE_SCROLLS: 'roastume_battle_scrolls',
   AUTH_PENDING_PROFILE: 'roastume_auth_pending_profile',
   AUTH_ONBOARDING_REQUIRED: 'roastume_auth_onboarding_required',
-  FIRE_COUNTS: 'roastume_fire_counts',
 };
 
 export const ITEMS_PER_PAGE = 6;
 
 export const MAX_ROAST_LENGTH = 500;
-
-export const MAX_FIRE_PER_USER_PER_RESUME = 5;
 
 export const APP_NAME = "ROASTUME";
 

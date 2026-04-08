@@ -2,10 +2,10 @@ import { AuthUser, BattleScroll, Resume, Roast, UserStats } from "../types";
 import {
   ApiErrorResponse,
   BackendMeResponse,
+  BackendReactionSummary,
   BackendResume,
   BackendResumeListResponse,
   BackendRoast,
-  BackendVotesSummary,
   CompleteOnboardingResponse,
   GoogleAuthBeginResponse,
   GoogleAuthCallbackResponse,
@@ -144,12 +144,13 @@ const mapResume = (resume: BackendResume, roastsCount = 0, likesCount = 0): Resu
   pdfUrl: normalizeFileUrl(resume.fileUrl),
 });
 
-const mapRoast = (roast: BackendRoast, likes = 0, index = 0): Roast => ({
+const mapRoast = (roast: BackendRoast, index = 0): Roast => ({
   id: roast.id,
   resumeId: roast.resumeId,
   user: roast.username ? `${roast.username}` : "unknown_user",
   text: roast.text,
-  likes,
+  reactionCount: roast.reactionCount ?? 0,
+  reactedByMe: roast.reactedByMe ?? false,
   variant: pickRoastVariant(roast.id),
   align: index % 2 === 0 ? "end" : undefined,
 });
@@ -267,25 +268,12 @@ export const getResumeById = async (id: string): Promise<{ resume: Resume; roast
       { method: "GET" }
     );
 
-    const roastsWithLikes = await Promise.all(
-      response.roasts.map(async (roast, index) => {
-        try {
-          const votes = await requestJson<BackendVotesSummary>(
-            `/api/votes/roast/${roast.id}`,
-            { method: "GET" }
-          );
-          return mapRoast(roast, votes.upvotes - votes.downvotes, index);
-        } catch {
-          return mapRoast(roast, 0, index);
-        }
-      })
-    );
-
-    const likesTotal = roastsWithLikes.reduce((sum, roast) => sum + roast.likes, 0);
+    const mappedRoasts = response.roasts.map((roast, index) => mapRoast(roast, index));
+    const reactionsTotal = mappedRoasts.reduce((sum, roast) => sum + roast.reactionCount, 0);
 
     return {
-      resume: mapResume(response.resume, roastsWithLikes.length, likesTotal),
-      roasts: roastsWithLikes,
+      resume: mapResume(response.resume, mappedRoasts.length, reactionsTotal),
+      roasts: mappedRoasts,
     };
   } catch (error) {
     if (error instanceof Error && error.message.toLowerCase().includes("not found")) {
@@ -307,16 +295,27 @@ export const addRoast = async (resumeId: string, text: string): Promise<Roast> =
   return mapRoast(response.roast, 0);
 };
 
-export const voteRoast = async (roastId: string, type: "up" | "down"): Promise<{ likes: number }> => {
-  const response = await requestJson<BackendVotesSummary>(
-    "/api/votes",
+export const reactToRoast = async (roastId: string): Promise<BackendReactionSummary> => {
+  return requestJson<BackendReactionSummary>(
+    `/api/roasts/${roastId}/react`,
     {
       method: "POST",
-      body: JSON.stringify({ roastId, type }),
     }
   );
+};
 
-  return { likes: response.upvotes - response.downvotes };
+export const unreactToRoast = async (roastId: string): Promise<BackendReactionSummary> => {
+  return requestJson<BackendReactionSummary>(
+    `/api/roasts/${roastId}/react`,
+    {
+      method: "DELETE",
+    }
+  );
+};
+
+// Temporary compatibility export while moving callers off vote semantics.
+export const voteRoast = async (roastId: string): Promise<BackendReactionSummary> => {
+  return reactToRoast(roastId);
 };
 
 export const getUserStats = async (): Promise<UserStats> => {

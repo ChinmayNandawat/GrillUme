@@ -68,6 +68,8 @@ export type BackendRoast = {
   username: string;
   text: string;
   createdAt: string;
+  reactionCount?: number;
+  reactedByMe?: boolean;
 };
 
 export type BackendMeResponse = {
@@ -86,7 +88,7 @@ export type BackendResumeListResponse = {
   metrics?: { totalBurns?: number };
 };
 
-export type BackendVotesSummary = {
-  upvotes: number;
-  downvotes: number;
+export type BackendReactionSummary = {
+  reactionCount: number;
+  reactedByMe: boolean;
 };

@@ -5,13 +5,13 @@ import { ErrorState } from "../components/ui/ErrorState";
 import { RoastBubble, RoastBubbleSkeleton } from "../components/roast/RoastBubble";
 import { useParams } from "react-router-dom";
 import { useEffect, useState, useCallback } from "react";
-import { getResumeById, addRoast, voteRoast } from "../services/api.ts";
+import { getResumeById, addRoast, reactToRoast, unreactToRoast } from "../services/api.ts";
 import { Resume, Roast } from "../types";
-import { MAX_FIRE_PER_USER_PER_RESUME, MAX_ROAST_LENGTH, STORAGE_KEYS } from "../constants";
+import { MAX_ROAST_LENGTH } from "../constants";
 import { useAuth } from "../context/AuthContext.tsx";
 
 export const RoastDetail = () => {
-  const { isAuthenticated, openAuthPanel, user } = useAuth();
+  const { isAuthenticated, openAuthPanel } = useAuth();
   const { id } = useParams<{ id: string }>();
   const [resume, setResume] = useState<Resume | null>(null);
   const [roasts, setRoasts] = useState<Roast[]>([]);
@@ -19,47 +19,6 @@ export const RoastDetail = () => {
   const [error, setError] = useState<string | null>(null);
   const [newRoastText, setNewRoastText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [fireBoost, setFireBoost] = useState(0);
-
-  const getStoredFireCount = useCallback((): number => {
-    if (typeof window === "undefined" || !user?.id || !id) return 0;
-
-    const key = `${user.id}:${id}`;
-    const raw = localStorage.getItem(STORAGE_KEYS.FIRE_COUNTS);
-    if (!raw) return 0;
-
-    try {
-      const parsed = JSON.parse(raw) as Record<string, number>;
-      const value = Number(parsed[key] || 0);
-      if (!Number.isFinite(value) || value < 0) return 0;
-      return Math.min(MAX_FIRE_PER_USER_PER_RESUME, Math.floor(value));
-    } catch {
-      return 0;
-    }
-  }, [id, user?.id]);
-
-  const storeFireCount = useCallback(
-    (count: number) => {
-      if (typeof window === "undefined" || !user?.id || !id) return;
-
-      const key = `${user.id}:${id}`;
-      const next = Math.min(MAX_FIRE_PER_USER_PER_RESUME, Math.max(0, Math.floor(count)));
-
-      let map: Record<string, number> = {};
-      try {
-        const raw = localStorage.getItem(STORAGE_KEYS.FIRE_COUNTS);
-        if (raw) {
-          map = JSON.parse(raw) as Record<string, number>;
-        }
-      } catch {
-        map = {};
-      }
-
-      map[key] = next;
-      localStorage.setItem(STORAGE_KEYS.FIRE_COUNTS, JSON.stringify(map));
-    },
-    [id, user?.id]
-  );
 
   const fetchDetail = useCallback(async () => {
     if (!id) return;
@@ -84,15 +43,6 @@ export const RoastDetail = () => {
   useEffect(() => {
     fetchDetail();
   }, [fetchDetail]);
-
-  useEffect(() => {
-    if (!isAuthenticated || !user?.id || !id) {
-      setFireBoost(0);
-      return;
-    }
-
-    setFireBoost(getStoredFireCount());
-  }, [getStoredFireCount, id, isAuthenticated, user?.id]);
 
   const handleRoastSubmit = async () => {
     if (!id || !newRoastText.trim() || isSubmitting || newRoastText.length > MAX_ROAST_LENGTH) return;
@@ -125,38 +75,42 @@ export const RoastDetail = () => {
     }
   };
 
-  const handleVote = async (roastId: string, type: 'up' | 'down') => {
+  const handleReactToggle = async (roastId: string, reactedByMe: boolean) => {
     if (!isAuthenticated) {
-      setError("Please sign in from the top bar to vote on roasts.");
+      setError("Please sign in from the top bar to react to roasts.");
       openAuthPanel();
       return;
     }
 
     try {
-      const { likes } = await voteRoast(roastId, type);
-      setRoasts(prev => prev.map(r => r.id === roastId ? { ...r, likes } : r));
+      const response = reactedByMe ? await unreactToRoast(roastId) : await reactToRoast(roastId);
+      let fireDelta = 0;
+      setRoasts((prev) =>
+        prev.map((roast) => {
+          if (roast.id !== roastId) return roast;
+          fireDelta = response.reactionCount - roast.reactionCount;
+          return {
+            ...roast,
+            reactionCount: response.reactionCount,
+            reactedByMe: response.reactedByMe,
+          };
+        })
+      );
+
+      if (fireDelta !== 0) {
+        setResume((prev) => {
+          if (!prev) return prev;
+          const currentFires = Number.parseInt(prev.fires.replace(/[^0-9]/g, ""), 10) || 0;
+          return {
+            ...prev,
+            fires: String(Math.max(0, currentFires + fireDelta)),
+          };
+        });
+      }
     } catch (err) {
-      console.error("Failed to vote:", err);
-      setError(err instanceof Error ? err.message : "Failed to vote");
+      console.error("Failed to react:", err);
+      setError(err instanceof Error ? err.message : "Failed to react");
     }
-  };
-
-  const handleFire = () => {
-    if (!isAuthenticated) {
-      setError("Please sign in from the top bar to fire up this resume.");
-      openAuthPanel();
-      return;
-    }
-
-    if (fireBoost >= MAX_FIRE_PER_USER_PER_RESUME) {
-      setError(`Fire limit reached. You can fire at most ${MAX_FIRE_PER_USER_PER_RESUME} times on this resume.`);
-      return;
-    }
-
-    const nextFireCount = Math.min(MAX_FIRE_PER_USER_PER_RESUME, fireBoost + 1);
-    setError(null);
-    setFireBoost(nextFireCount);
-    storeFireCount(nextFireCount);
   };
 
   if (isLoading) {
@@ -192,9 +146,7 @@ export const RoastDetail = () => {
 
   const isPdfResume = Boolean(resume.pdfUrl && resume.pdfUrl.toLowerCase().endsWith(".pdf"));
   const previewImageUrl = !isPdfResume ? (resume.pdfUrl || resume.avatar || "") : "";
-  const baseFires = Number.parseInt(String(resume.fires).replace(/[^0-9-]/g, ""), 10) || 0;
-  const displayFires = String(baseFires + fireBoost);
-  const isFireLimitReached = fireBoost >= MAX_FIRE_PER_USER_PER_RESUME;
+  const displayFires = String(resume.fires);
 
   return (
     <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12">
@@ -237,17 +189,6 @@ export const RoastDetail = () => {
               <Flame size={20} className="text-secondary fill-secondary" />
               {displayFires} Fires
             </div>
-            <Button
-              variant="secondary"
-              className="px-8 py-3 text-sm"
-              ariaLabel="Fire up this resume"
-              onClick={handleFire}
-              disabled={isAuthenticated && isFireLimitReached}
-            >
-              {isAuthenticated
-                ? `FIRE (${fireBoost}/${MAX_FIRE_PER_USER_PER_RESUME})`
-                : `FIRE (0/${MAX_FIRE_PER_USER_PER_RESUME})`}
-            </Button>
           </div>
           {resume.pdfUrl ? (
             <a href={resume.pdfUrl} target="_blank" rel="noreferrer">
@@ -278,7 +219,7 @@ export const RoastDetail = () => {
               <RoastBubble 
                 key={roast.id} 
                 roast={roast} 
-                onVote={handleVote} 
+                onReact={handleReactToggle}
                 align={roast.align}
               />
             ))

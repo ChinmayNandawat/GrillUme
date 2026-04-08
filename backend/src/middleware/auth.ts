@@ -110,3 +110,41 @@ export const authenticateToken = async (
     res.status(401).json({ message: 'Access denied: Invalid or expired token' });
   }
 };
+
+export const authenticateOptionalToken = async (
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const token = readAuthToken(req);
+  if (!token) {
+    next();
+    return;
+  }
+
+  try {
+    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !authData.user) {
+      next();
+      return;
+    }
+
+    req.authUid = authData.user.id;
+
+    const { data: appUser, error: appUserError } = await supabase
+      .from('User')
+      .select('id,onboardingComplete')
+      .eq('googleUid', authData.user.id)
+      .maybeSingle();
+
+    if (appUserError || !appUser || !appUser.onboardingComplete) {
+      next();
+      return;
+    }
+
+    req.userId = appUser.id;
+    next();
+  } catch (_error) {
+    next();
+  }
+};
