@@ -179,7 +179,9 @@ const normalizeFileUrl = (rawUrl?: string | null): string | undefined => {
 };
 
 export const beginGoogleSignIn = async (): Promise<GoogleAuthBeginResponse> => {
-  return requestJson<GoogleAuthBeginResponse>("/api/auth/google/url", { method: "GET" });
+  const callbackUrl = typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : "";
+  const params = callbackUrl ? `?redirectTo=${encodeURIComponent(callbackUrl)}` : "";
+  return requestJson<GoogleAuthBeginResponse>(`/api/auth/google/url${params}`, { method: "GET" });
 };
 
 export const completeGoogleSignIn = async (code: string): Promise<GoogleAuthCallbackResponse> => {

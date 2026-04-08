@@ -84,6 +84,14 @@ const extractGoogleProfile = (authUser: { id: string; user_metadata?: Record<str
 
 const normalizeOrigin = (origin: string): string => origin.trim().replace(/\/$/, '');
 
+const tryParseUrl = (value: string): URL | null => {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+};
+
 const getRequestOrigin = (req: Request): string | null => {
   const headerOrigin = req.get('origin');
   if (headerOrigin) {
@@ -109,6 +117,18 @@ const getRequestOrigin = (req: Request): string | null => {
 
 const getCallbackRedirectTo = (req: Request): string => {
   const allowedOrigins = env.allowedOrigins.map(normalizeOrigin);
+  const requestedRedirectTo = String(req.query.redirectTo || '').trim();
+  const requestedUrl = requestedRedirectTo ? tryParseUrl(requestedRedirectTo) : null;
+
+  if (requestedUrl) {
+    const requestedOrigin = normalizeOrigin(requestedUrl.origin);
+    const requestedPath = requestedUrl.pathname.replace(/\/$/, '');
+
+    if (allowedOrigins.includes(requestedOrigin) && requestedPath === '/auth/callback') {
+      return `${requestedOrigin}/auth/callback`;
+    }
+  }
+
   const requestOrigin = getRequestOrigin(req);
 
   if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
