@@ -109,11 +109,12 @@ export const RoastDetail = () => {
 
     try {
       const response = reactedByMe ? await unreactToRoast(roastId) : await reactToRoast(roastId);
-      let fireDelta = 0;
+      const currentRoast = roasts.find((r) => r.id === roastId);
+      const fireDelta = currentRoast ? response.reactionCount - currentRoast.reactionCount : 0;
+
       setRoasts((prev) =>
         prev.map((roast) => {
           if (roast.id !== roastId) return roast;
-          fireDelta = response.reactionCount - roast.reactionCount;
           return {
             ...roast,
             reactionCount: response.reactionCount,
