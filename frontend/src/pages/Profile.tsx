@@ -1,4 +1,4 @@
-import { FileText, Flame, Globe, LogOut, Award, MessageSquareOff, Edit3, X, AlertTriangle } from "lucide-react";
+import { FileText, Flame, Globe, LogOut, MessageSquareOff, Edit3, X, AlertTriangle } from "lucide-react";
 import { StatCard, StatCardSkeleton } from "../components/profile/StatCard";
 import { useEffect, useState, useCallback } from "react";
 import { getUserStats, getBattleScrolls, deleteResumeById, updateResumeById } from "../services/api.ts";
@@ -181,7 +181,7 @@ export const Profile = () => {
               <img 
                 src={stats.avatar} 
                 alt="Profile" 
-                className="w-full h-full object-cover grayscale contrast-125"
+                className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
             </div>
@@ -193,10 +193,6 @@ export const Profile = () => {
           <div className="flex-1 text-center md:text-left">
             <h1 className="font-headline font-black text-5xl uppercase tracking-tighter text-on-background mb-2">{stats.name}</h1>
             <p className="font-headline font-bold text-tertiary uppercase text-lg tracking-widest">{stats.role}</p>
-            <div className="mt-4 inline-flex items-center gap-2 bg-on-background text-primary-container px-4 py-2 font-black uppercase text-sm rounded-lg">
-              <Award size={20} fill="currentColor" />
-              Roast Rank: {stats.rankTitle}
-            </div>
           </div>
         </div>
       </section>

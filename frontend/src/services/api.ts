@@ -364,14 +364,6 @@ export const getUserStats = async (): Promise<UserStats> => {
     totalRoastsReceived: String(roastsReceived),
     globalRank: globalRank > 0 ? `#${globalRank}` : "UNRANKED",
     level: Math.max(1, 1 + Math.floor(Math.max(0, burnsReceived) / 10)),
-    rankTitle:
-      burnsReceived >= 100
-        ? "ROAST WARLORD"
-        : burnsReceived >= 40
-          ? "ROAST COMMANDER"
-          : burnsReceived >= 10
-            ? "ROAST SERGEANT"
-            : "ROAST CADET",
     name: response.user.googleDisplayName,
     role: `@${response.user.username}`,
     avatar: response.user.avatarUrl,

@@ -28,7 +28,7 @@ export const Home = () => {
   const [totalBurns, setTotalBurns] = useState(0);
   
   const debouncedSearchQuery = useDebounce(searchQuery, 400);
-  const heroLevel = useMemo(() => Math.max(1, 1 + Math.floor(Math.max(0, totalBurns) / 25)), [totalBurns]);
+  const heroLevel = useMemo(() => Math.max(1, 1 + Math.floor(Math.max(0, totalBurns) / 10)), [totalBurns]);
 
   // Derive computed lists using memoization
   const hottestResumes = useMemo(() => {

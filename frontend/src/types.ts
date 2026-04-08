@@ -35,7 +35,6 @@ export interface UserStats {
   totalRoastsReceived: string;
   globalRank: string;
   level: number;
-  rankTitle: string;
   name: string;
   role: string;
   avatar: string;
