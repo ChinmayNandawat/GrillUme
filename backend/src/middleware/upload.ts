@@ -1,6 +1,6 @@
 import path from 'path';
 import { NextFunction, Request, Response } from 'express';
-import FileType from 'file-type';
+import { fromBuffer } from 'file-type';
 import multer from 'multer';
 import { AppError } from './error';
 
@@ -50,7 +50,7 @@ export const validateUploadMagicBytes = async (
       return;
     }
 
-    const detectedType = await FileType.fromBuffer(req.file.buffer);
+    const detectedType = await fromBuffer(req.file.buffer);
 
     if (!detectedType) {
       next(
