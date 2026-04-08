@@ -255,28 +255,19 @@ export const addReaction = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
-    const { data: existingReaction, error: existingError } = await supabase
-      .from('Vote')
-      .select('id')
-      .eq('roastId', roastId)
-      .eq('userId', userId)
-      .maybeSingle();
+    const payload = {
+      id: crypto.randomUUID(),
+      roastId,
+      userId,
+      type: REACTION_TYPE,
+      createdAt: new Date().toISOString(),
+    };
 
-    if (existingError) throw existingError;
-
-    if (!existingReaction) {
-      const payload = {
-        id: crypto.randomUUID(),
-        roastId,
-        userId,
-        type: REACTION_TYPE,
-        createdAt: new Date().toISOString(),
-      };
-
-      const { error: insertError } = await supabase.from('Vote').insert([payload]);
-      if (insertError) throw insertError;
-    }
-
+    const { error: upsertError } = await supabase.from('Vote').upsert([payload], {
+      onConflict: 'roastId,userId',
+      ignoreDuplicates: true,
+    });
+    if (upsertError) throw upsertError;
     const state = await getReactionStateForRoast(roastId, userId);
     res.status(200).json(state);
   } catch (error) {
