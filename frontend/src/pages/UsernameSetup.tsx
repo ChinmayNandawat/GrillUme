@@ -9,7 +9,6 @@ const USERNAME_REGEX = /^[a-z0-9_]{3,24}$/;
 export const UsernameSetup = () => {
   const navigate = useNavigate();
   const {
-    token,
     isAuthenticated,
     onboardingRequired,
     pendingProfile,
@@ -87,7 +86,7 @@ export const UsernameSetup = () => {
     return <Navigate to="/" replace />;
   }
 
-  if (!token || !onboardingRequired) {
+  if (!onboardingRequired) {
     return <Navigate to="/" replace />;
   }
 

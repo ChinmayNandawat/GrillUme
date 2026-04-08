@@ -54,7 +54,7 @@ model Roast {
 
 model Vote {
   id        String   @id @default(cuid())
-  type      String
+  type      String   @default("fire")
   createdAt DateTime @default(now())
 
   roastId   String
@@ -63,5 +63,6 @@ model Vote {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // One reaction per user per roast (server-authoritative uniqueness).
   @@unique([roastId, userId])
 }

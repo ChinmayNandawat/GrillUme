@@ -1,7 +1,92 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase';
 import { AuthRequest } from '../middleware/auth';
+
+type RoastRow = {
+  id: string;
+  text: string;
+  createdAt: string;
+  resumeId: string;
+  userId: string;
+};
+
+const REACTION_TYPE = 'fire';
+
+const getReactionCountMap = async (roastIds: string[]): Promise<Map<string, number>> => {
+  const map = new Map<string, number>();
+  if (roastIds.length === 0) return map;
+
+  const countResults = await Promise.all(
+    roastIds.map(async (roastId) => {
+      const { count, error } = await supabase
+        .from('Vote')
+        .select('*', { count: 'exact', head: true })
+        .eq('roastId', roastId);
+
+      if (error) throw error;
+
+      return { roastId, count: count || 0 };
+    })
+  );
+
+  countResults.forEach(({ roastId, count }) => {
+    map.set(roastId, count);
+  });
+
+  return map;
+};
+
+const getReactedByMeSet = async (roastIds: string[], userId?: string): Promise<Set<string>> => {
+  const set = new Set<string>();
+  if (!userId || roastIds.length === 0) return set;
+
+  const { data, error } = await supabase
+    .from('Vote')
+    .select('roastId')
+    .eq('userId', userId)
+    .in('roastId', roastIds);
+
+  if (error) throw error;
+
+  (data || []).forEach((reaction) => {
+    set.add(reaction.roastId);
+  });
+
+  return set;
+};
+
+const getReactionStateForRoast = async (
+  roastId: string,
+  userId?: string
+): Promise<{ reactionCount: number; reactedByMe: boolean }> => {
+  const [{ count: reactionCount, error: countError }, reactedByMeSet] = await Promise.all([
+    supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('roastId', roastId),
+    getReactedByMeSet([roastId], userId),
+  ]);
+
+  if (countError) throw countError;
+
+  return {
+    reactionCount: reactionCount || 0,
+    reactedByMe: reactedByMeSet.has(roastId),
+  };
+};
+
+const mapRoastResponse = (
+  roast: RoastRow,
+  usernameById: Map<string, string>,
+  reactionCountMap: Map<string, number>,
+  reactedByMeSet: Set<string>
+) => ({
+  id: roast.id,
+  text: roast.text,
+  createdAt: roast.createdAt,
+  resumeId: roast.resumeId,
+  username: usernameById.get(roast.userId) || 'unknown_user',
+  reactionCount: reactionCountMap.get(roast.id) || 0,
+  reactedByMe: reactedByMeSet.has(roast.id),
+});
 
 export const createRoast = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -56,6 +141,8 @@ export const createRoast = async (req: AuthRequest, res: Response): Promise<void
         createdAt: data.createdAt,
         resumeId: data.resumeId,
         username: roastAuthor?.username || 'unknown_user',
+        reactionCount: 0,
+        reactedByMe: false,
       },
     });
   } catch (error) {
@@ -101,8 +188,9 @@ export const deleteRoast = async (req: AuthRequest, res: Response): Promise<void
 };
 
 
-export const getRoastsByResumeId = async (req: Request, res: Response): Promise<void> => {
+export const getRoastsByResumeId = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const userId = req.userId;
     const { resumeId } = req.params;
 
     const { data: roasts, error } = await supabase
@@ -130,17 +218,81 @@ export const getRoastsByResumeId = async (req: Request, res: Response): Promise<
     const usernameById = new Map<string, string>();
     (users || []).forEach((user) => usernameById.set(user.id, user.username));
 
+    const roastIds = roastList.map((roast) => roast.id);
+    const [reactionCountMap, reactedByMeSet] = await Promise.all([
+      getReactionCountMap(roastIds),
+      getReactedByMeSet(roastIds, userId),
+    ]);
+
     res.status(200).json({
-      roasts: roastList.map((roast) => ({
-        id: roast.id,
-        text: roast.text,
-        createdAt: roast.createdAt,
-        resumeId: roast.resumeId,
-        username: usernameById.get(roast.userId) || 'unknown_user',
-      })),
+      roasts: roastList.map((roast) => mapRoastResponse(roast, usernameById, reactionCountMap, reactedByMeSet)),
     });
   } catch (error) {
     console.error('Get roasts by resume id error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const addReaction = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+    const roastId = String(req.params.id);
+
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+
+    const { data: roast, error: roastError } = await supabase
+      .from('Roast')
+      .select('id')
+      .eq('id', roastId)
+      .maybeSingle();
+
+    if (roastError) throw roastError;
+    if (!roast) {
+      res.status(404).json({ message: 'Roast not found' });
+      return;
+    }
+
+    const payload = {
+      id: crypto.randomUUID(),
+      roastId,
+      userId,
+      type: REACTION_TYPE,
+      createdAt: new Date().toISOString(),
+    };
+
+    const { error: upsertError } = await supabase.from('Vote').upsert([payload], {
+      onConflict: 'roastId,userId',
+      ignoreDuplicates: true,
+    });
+    if (upsertError) throw upsertError;
+    const state = await getReactionStateForRoast(roastId, userId);
+    res.status(200).json(state);
+  } catch (error) {
+    console.error('Add reaction error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const removeReaction = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+    const roastId = String(req.params.id);
+
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+
+    const { error } = await supabase.from('Vote').delete().eq('roastId', roastId).eq('userId', userId);
+    if (error) throw error;
+
+    const state = await getReactionStateForRoast(roastId, userId);
+    res.status(200).json(state);
+  } catch (error) {
+    console.error('Remove reaction error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };

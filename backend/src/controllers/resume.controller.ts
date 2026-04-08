@@ -6,6 +6,7 @@ import { AppError } from '../middleware/error';
 import { env } from '../config/env';
 import path from 'path';
 import { cloudinary } from '../config/cloudinary';
+import { sanitizeSearchQuery } from '../utils/searchSanitizer';
 
 type ResumeRow = {
   id: string;
@@ -23,6 +24,33 @@ type PublicUserRow = {
   id: string;
   username: string;
   avatarUrl: string;
+};
+
+type RoastVoteSummary = {
+  upvotes: number;
+  downvotes: number;
+  reactedByMe: boolean;
+};
+
+type ResumeDetailRoastRow = {
+  id: string;
+  text: string;
+  createdAt: string;
+  resumeId: string;
+  userId: string;
+};
+
+type ResumeDetailRoastResponse = {
+  id: string;
+  text: string;
+  createdAt: string;
+  resumeId: string;
+  username: string;
+  reactionCount: number;
+  upvotes: number;
+  downvotes: number;
+  netScore: number;
+  reactedByMe: boolean;
 };
 
 
@@ -63,6 +91,125 @@ const getPublicUserMap = async (userIds: string[]): Promise<Map<string, PublicUs
   return map;
 };
 
+const getRoastVoteSummaryMap = async (
+  roastIds: string[],
+  userId?: string
+): Promise<Map<string, RoastVoteSummary>> => {
+  const summaryMap = new Map<string, RoastVoteSummary>();
+
+  if (roastIds.length === 0) {
+    return summaryMap;
+  }
+
+  const { data, error } = await supabase
+    .from('Vote')
+    .select('roastId,type,userId')
+    .in('roastId', roastIds);
+
+  if (error) throw error;
+
+  (data || []).forEach((vote) => {
+    const currentSummary = summaryMap.get(vote.roastId) || {
+      upvotes: 0,
+      downvotes: 0,
+      reactedByMe: false,
+    };
+
+    if (vote.type === 'down') {
+      currentSummary.downvotes += 1;
+    } else {
+      currentSummary.upvotes += 1;
+    }
+
+    if (userId && vote.userId === userId) {
+      currentSummary.reactedByMe = true;
+    }
+
+    summaryMap.set(vote.roastId, currentSummary);
+  });
+
+  return summaryMap;
+};
+
+const buildResumeDetailResponse = async (
+  id: string,
+  userId?: string,
+  includeVotes = true
+): Promise<{ resume: ResumeRow; roasts: ResumeDetailRoastResponse[] } | null> => {
+  const { data: resume, error: resumeError } = await supabase
+    .from('Resume')
+    .select('id,title,field,details,isClassified,fileUrl,createdAt,updatedAt,userId')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (resumeError) throw resumeError;
+  if (!resume) {
+    return null;
+  }
+
+  const { data: roastRows, error: roastError } = await supabase
+    .from('Roast')
+    .select('id,text,createdAt,resumeId,userId')
+    .eq('resumeId', id)
+    .order('createdAt', { ascending: false });
+
+  if (roastError) throw roastError;
+
+  const roastList = (roastRows || []) as ResumeDetailRoastRow[];
+  const roastIds = roastList.map((roast) => roast.id);
+  const userMapPromise = getPublicUserMap([resume.userId, ...roastList.map((roast) => roast.userId)]);
+  const voteSummaryPromise = includeVotes
+    ? getRoastVoteSummaryMap(roastIds, userId)
+    : Promise.resolve(new Map<string, RoastVoteSummary>());
+
+  const [userMap, voteSummaryMap] = await Promise.all([userMapPromise, voteSummaryPromise]);
+
+  return {
+    resume: resume as ResumeRow,
+    roasts: roastList.map((roast) => {
+      const summary = voteSummaryMap.get(roast.id) || {
+        upvotes: 0,
+        downvotes: 0,
+        reactedByMe: false,
+      };
+      const reactionCount = summary.upvotes + summary.downvotes;
+
+      return {
+        id: roast.id,
+        text: roast.text,
+        createdAt: roast.createdAt,
+        resumeId: roast.resumeId,
+        username: userMap.get(roast.userId)?.username || 'unknown_user',
+        reactionCount,
+        upvotes: summary.upvotes,
+        downvotes: summary.downvotes,
+        netScore: summary.upvotes - summary.downvotes,
+        reactedByMe: summary.reactedByMe,
+      };
+    }),
+  };
+};
+
+const getMatchingUserIdsByUsername = async (query: string): Promise<string[]> => {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return [];
+
+  const { data, error } = await supabase
+    .from('User')
+    .select('id')
+    .ilike('username', `%${normalizedQuery}%`);
+
+  if (error) throw error;
+
+  return (data || []).map((user) => user.id);
+};
+
+const getGlobalTotalBurns = async (): Promise<number> => {
+  const { count, error } = await supabase.from('Vote').select('*', { count: 'exact', head: true });
+  if (error) throw error;
+  return count || 0;
+};
+
 
 const withResumeMetrics = async (
   resumes: ResumeRow[]
@@ -101,11 +248,7 @@ const withResumeMetrics = async (
     (votes || []).forEach((vote) => {
       const resumeId = roastIdToResumeId.get(vote.roastId);
       if (!resumeId) return;
-
-      const delta = vote.type === 'up' ? 1 : vote.type === 'down' ? -1 : 0;
-      if (delta === 0) return;
-
-      burnsByResumeId.set(resumeId, (burnsByResumeId.get(resumeId) || 0) + delta);
+      burnsByResumeId.set(resumeId, (burnsByResumeId.get(resumeId) || 0) + 1);
     });
   }
 
@@ -121,9 +264,28 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
   try {
     const page = parsePositiveInt(req.query.page as string | undefined, 1);
     const limit = Math.min(parsePositiveInt(req.query.limit as string | undefined, 10), 50);
-    const query = ((req.query.query as string | undefined) || '').trim();
+    const rawQuery = (req.query.query as string | undefined) || '';
+    const sanitizedQuery = sanitizeSearchQuery(rawQuery, 100);
     const from = (page - 1) * limit;
     const to = from + limit - 1;
+
+    if (sanitizedQuery.becameEmptyAfterSanitization) {
+      const totalBurns = await getGlobalTotalBurns();
+
+      res.status(200).json({
+        data: [],
+        page,
+        limit,
+        total: 0,
+        metrics: {
+          totalBurns,
+        },
+      });
+      return;
+    }
+
+    const query = sanitizedQuery.value;
+    const matchingUserIds = query ? await getMatchingUserIdsByUsername(query) : [];
 
     let supabaseQuery = supabase
       .from('Resume')
@@ -132,7 +294,13 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
       .range(from, to);
 
     if (query) {
-      supabaseQuery = supabaseQuery.or(`title.ilike.%${query}%,field.ilike.%${query}%`);
+      const searchParts = [`title.ilike.%${query}%`, `details.ilike.%${query}%`];
+
+      if (matchingUserIds.length > 0) {
+        searchParts.push(`userId.in.(${matchingUserIds.join(',')})`);
+      }
+
+      supabaseQuery = supabaseQuery.or(searchParts.join(','));
     }
 
     const { data, error, count } = await supabaseQuery;
@@ -173,25 +341,12 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
         (votes || []).forEach((vote) => {
           const resumeId = roastIdToResumeId.get(vote.roastId);
           if (!resumeId) return;
-
-          const delta = vote.type === 'up' ? 1 : vote.type === 'down' ? -1 : 0;
-          if (delta === 0) return;
-
-          burnsByResumeId.set(resumeId, (burnsByResumeId.get(resumeId) || 0) + delta);
+          burnsByResumeId.set(resumeId, (burnsByResumeId.get(resumeId) || 0) + 1);
         });
       }
     }
 
-    const [{ count: upvoteCount, error: upvoteCountError }, { count: downvoteCount, error: downvoteCountError }] =
-      await Promise.all([
-        supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('type', 'up'),
-        supabase.from('Vote').select('*', { count: 'exact', head: true }).eq('type', 'down'),
-      ]);
-
-    if (upvoteCountError) throw upvoteCountError;
-    if (downvoteCountError) throw downvoteCountError;
-
-    const totalBurns = (upvoteCount || 0) - (downvoteCount || 0);
+    const totalBurns = await getGlobalTotalBurns();
     const publicUsers = await getPublicUserMap(resumes.map((resume) => resume.userId));
 
     res.status(200).json({
@@ -409,58 +564,73 @@ export const updateResume = async (req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-export const getResumeById = async (req: Request, res: Response): Promise<void> => {
+export const getResumeById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
+    const userId = req.userId;
 
-    const { data: resume, error: resumeError } = await supabase
-      .from('Resume')
-      .select('id,title,field,details,isClassified,fileUrl,createdAt,updatedAt,userId')
-      .eq('id', id)
-      .maybeSingle();
+    const detailResponse = await buildResumeDetailResponse(id, userId, true);
 
-    if (resumeError) throw resumeError;
-    if (!resume) {
+    if (!detailResponse) {
       res.status(404).json({ message: 'Resume not found' });
       return;
     }
 
-    const { data: roasts, error: roastError } = await supabase
-      .from('Roast')
-      .select('id,text,createdAt,resumeId,userId')
-      .eq('resumeId', id)
-      .order('createdAt', { ascending: false });
-
-    if (roastError) throw roastError;
-
-    const userMap = await getPublicUserMap([
-      resume.userId,
-      ...(roasts || []).map((roast) => roast.userId),
-    ]);
+    const userMap = await getPublicUserMap([detailResponse.resume.userId]);
 
     res.status(200).json({
       resume: {
-        id: resume.id,
-        title: resume.title,
-        field: resume.field,
-        details: resume.details,
-        isClassified: resume.isClassified,
-        fileUrl: resume.fileUrl,
-        createdAt: resume.createdAt,
-        updatedAt: resume.updatedAt,
-        ownerUsername: userMap.get(resume.userId)?.username || 'unknown_user',
-        ownerAvatarUrl: userMap.get(resume.userId)?.avatarUrl || '',
+        id: detailResponse.resume.id,
+        title: detailResponse.resume.title,
+        field: detailResponse.resume.field,
+        details: detailResponse.resume.details,
+        isClassified: detailResponse.resume.isClassified,
+        fileUrl: detailResponse.resume.fileUrl,
+        createdAt: detailResponse.resume.createdAt,
+        updatedAt: detailResponse.resume.updatedAt,
+        ownerUsername: userMap.get(detailResponse.resume.userId)?.username || 'unknown_user',
+        ownerAvatarUrl: userMap.get(detailResponse.resume.userId)?.avatarUrl || '',
       },
-      roasts: (roasts || []).map((roast) => ({
-        id: roast.id,
-        text: roast.text,
-        createdAt: roast.createdAt,
-        resumeId: roast.resumeId,
-        username: userMap.get(roast.userId)?.username || 'unknown_user',
-      })),
+      roasts: detailResponse.roasts,
     });
   } catch (error) {
     console.error('Get resume by id error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const getResumeRoastsById = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    const userId = req.userId;
+    const includeVotes = req.query.includeVotes !== 'false';
+
+    const detailResponse = await buildResumeDetailResponse(id, userId, includeVotes);
+
+    if (!detailResponse) {
+      res.status(404).json({ message: 'Resume not found' });
+      return;
+    }
+
+    const userMap = await getPublicUserMap([detailResponse.resume.userId]);
+
+    res.status(200).json({
+      resume: {
+        id: detailResponse.resume.id,
+        title: detailResponse.resume.title,
+        field: detailResponse.resume.field,
+        details: detailResponse.resume.details,
+        isClassified: detailResponse.resume.isClassified,
+        fileUrl: detailResponse.resume.fileUrl,
+        createdAt: detailResponse.resume.createdAt,
+        updatedAt: detailResponse.resume.updatedAt,
+        ownerUsername: userMap.get(detailResponse.resume.userId)?.username || 'unknown_user',
+        ownerAvatarUrl: userMap.get(detailResponse.resume.userId)?.avatarUrl || '',
+      },
+      roasts: detailResponse.roasts,
+    });
+  } catch (error) {
+    console.error('Get resume roasts by id error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };

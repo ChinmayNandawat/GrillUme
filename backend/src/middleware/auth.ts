@@ -6,6 +6,30 @@ export interface AuthRequest extends Request {
   userId?: string;
 }
 
+const ACCESS_COOKIE_NAME = 'grillume_access_token';
+
+const parseCookieHeader = (cookieHeader: string | undefined): Record<string, string> => {
+  if (!cookieHeader) return {};
+
+  return cookieHeader.split(';').reduce<Record<string, string>>((acc, pair) => {
+    const [rawKey, ...rawValue] = pair.split('=');
+    const key = rawKey?.trim();
+    if (!key) return acc;
+    const value = rawValue.join('=').trim();
+    try {
+      acc[key] = decodeURIComponent(value);
+    } catch {
+      acc[key] = value;
+    }
+    return acc;
+  }, {});
+};
+
+const readCookieToken = (req: Request): string | null => {
+  const cookies = parseCookieHeader(req.headers.cookie);
+  return cookies[ACCESS_COOKIE_NAME] || null;
+};
+
 const readBearerToken = (req: Request): string | null => {
   const authHeader = req.headers['authorization'];
   if (!authHeader) return null;
@@ -13,12 +37,16 @@ const readBearerToken = (req: Request): string | null => {
   return token || null;
 };
 
+const readAuthToken = (req: Request): string | null => {
+  return readCookieToken(req) || readBearerToken(req);
+};
+
 export const authenticateSupabaseToken = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const token = readBearerToken(req);
+  const token = readAuthToken(req);
 
   if (!token) {
     res.status(401).json({ message: 'Access denied: No token provided' });
@@ -44,7 +72,7 @@ export const authenticateToken = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const token = readBearerToken(req);
+  const token = readAuthToken(req);
   if (!token) {
     res.status(401).json({ message: 'Access denied: No token provided' });
     return;
@@ -85,5 +113,43 @@ export const authenticateToken = async (
     next();
   } catch (_error) {
     res.status(401).json({ message: 'Access denied: Invalid or expired token' });
+  }
+};
+
+export const authenticateOptionalToken = async (
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const token = readAuthToken(req);
+  if (!token) {
+    next();
+    return;
+  }
+
+  try {
+    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !authData.user) {
+      next();
+      return;
+    }
+
+    req.authUid = authData.user.id;
+
+    const { data: appUser, error: appUserError } = await supabase
+      .from('User')
+      .select('id,onboardingComplete')
+      .eq('googleUid', authData.user.id)
+      .maybeSingle();
+
+    if (appUserError || !appUser || !appUser.onboardingComplete) {
+      next();
+      return;
+    }
+
+    req.userId = appUser.id;
+    next();
+  } catch (_error) {
+    next();
   }
 };

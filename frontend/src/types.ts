@@ -20,7 +20,12 @@ export interface Roast {
   resumeId: string;
   user: string;
   text: string;
-  likes: number;
+  createdAt: string;
+  reactionCount: number;
+  upvotes?: number;
+  downvotes?: number;
+  netScore?: number;
+  reactedByMe: boolean;
   variant: "yellow" | "red" | "blue";
   align?: "end";
 }
@@ -30,7 +35,6 @@ export interface UserStats {
   totalRoastsReceived: string;
   globalRank: string;
   level: number;
-  rankTitle: string;
   name: string;
   role: string;
   avatar: string;
@@ -41,6 +45,7 @@ export interface BattleScroll {
   name: string;
   date: string;
   roasts: string;
+  description?: string;
   colors: string[];
 }
 

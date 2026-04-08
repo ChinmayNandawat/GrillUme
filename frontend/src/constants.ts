@@ -3,19 +3,13 @@ export const STORAGE_KEYS = {
   ROASTS: 'roastume_roasts',
   USER_STATS: 'roastume_user_stats',
   BATTLE_SCROLLS: 'roastume_battle_scrolls',
-  AUTH_TOKEN: 'roastume_auth_token',
-  AUTH_REFRESH_TOKEN: 'roastume_auth_refresh_token',
-  AUTH_TOKEN_EXPIRES_AT: 'roastume_auth_token_expires_at',
   AUTH_PENDING_PROFILE: 'roastume_auth_pending_profile',
   AUTH_ONBOARDING_REQUIRED: 'roastume_auth_onboarding_required',
-  FIRE_COUNTS: 'roastume_fire_counts',
 };
 
 export const ITEMS_PER_PAGE = 6;
 
 export const MAX_ROAST_LENGTH = 500;
-
-export const MAX_FIRE_PER_USER_PER_RESUME = 5;
 
 export const APP_NAME = "ROASTUME";
 

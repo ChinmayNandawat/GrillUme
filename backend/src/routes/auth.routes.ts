@@ -6,6 +6,7 @@ import {
 	completeOnboarding,
 	getMe,
 	logout,
+	refreshSession,
 } from '../controllers/auth.controller';
 import { authenticateSupabaseToken, authenticateToken } from '../middleware/auth';
 import { validateRequest } from '../middleware/validate';
@@ -34,6 +35,7 @@ router.post(
 	completeOnboarding
 );
 router.get('/me', authenticateToken, getMe);
-router.post('/logout', authenticateSupabaseToken, logout);
+router.post('/refresh', authLimiter, refreshSession);
+router.post('/logout', logout);
 
 export default router;

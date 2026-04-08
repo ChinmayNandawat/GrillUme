@@ -23,9 +23,13 @@ export type PendingGoogleProfile = {
 };
 
 export type GoogleAuthCallbackResponse = {
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt?: number;
+  onboardingRequired: boolean;
+  user?: AuthUser;
+  pendingProfile?: PendingGoogleProfile;
+};
+
+export type RefreshSessionResponse = {
+  refreshed: boolean;
   onboardingRequired: boolean;
   user?: AuthUser;
   pendingProfile?: PendingGoogleProfile;
@@ -64,6 +68,11 @@ export type BackendRoast = {
   username: string;
   text: string;
   createdAt: string;
+  reactionCount?: number;
+  upvotes?: number;
+  downvotes?: number;
+  netScore?: number;
+  reactedByMe?: boolean;
 };
 
 export type BackendMeResponse = {
@@ -82,7 +91,12 @@ export type BackendResumeListResponse = {
   metrics?: { totalBurns?: number };
 };
 
-export type BackendVotesSummary = {
-  upvotes: number;
-  downvotes: number;
+export type BackendResumeDetailResponse = {
+  resume: BackendResume;
+  roasts: BackendRoast[];
+};
+
+export type BackendReactionSummary = {
+  reactionCount: number;
+  reactedByMe: boolean;
 };

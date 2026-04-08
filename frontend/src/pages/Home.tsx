@@ -28,7 +28,7 @@ export const Home = () => {
   const [totalBurns, setTotalBurns] = useState(0);
   
   const debouncedSearchQuery = useDebounce(searchQuery, 400);
-  const heroLevel = useMemo(() => Math.max(1, 1 + Math.floor(Math.max(0, totalBurns) / 25)), [totalBurns]);
+  const heroLevel = useMemo(() => Math.max(1, 1 + Math.floor(Math.max(0, totalBurns) / 10)), [totalBurns]);
 
   // Derive computed lists using memoization
   const hottestResumes = useMemo(() => {
@@ -107,7 +107,7 @@ export const Home = () => {
           <div className="flex comic-border bg-white kinetic-shadow overflow-hidden">
             <input 
               className="w-full bg-transparent border-none p-4 font-body font-bold placeholder:text-outline focus:ring-0 text-base uppercase" 
-              placeholder="SEARCH BY NAME, JOB, OR LEVEL OF HUBRIS..." 
+              placeholder="SEARCH BY USERNAME, TITLE, OR DESCRIPTION..." 
               type="text"
               value={searchQuery}
               onChange={handleSearch}

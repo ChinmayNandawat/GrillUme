@@ -1,19 +1,39 @@
-import { ThumbsUp, ThumbsDown } from "lucide-react";
+import { Flame } from "lucide-react";
 import { Roast } from "../../types";
 import { Skeleton } from "../ui/Skeleton";
+import { useContext } from "react";
+import { AuthContext } from "../../context/AuthContext";
+
+const formatRoastTimestamp = (isoDate: string): string => {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return "UNKNOWN DATE";
+  return date
+    .toLocaleString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    })
+    .toUpperCase();
+};
 
 interface RoastBubbleProps {
   key?: string | number;
   roast: Roast;
-  onVote: (id: string, type: 'up' | 'down') => void;
+  onReact: (id: string, reactedByMe: boolean) => void;
   align?: "start" | "end";
 }
 
 export const RoastBubble = ({ 
   roast, 
-  onVote, 
+  onReact,
   align = "start" 
 }: RoastBubbleProps) => {
+  const auth = useContext(AuthContext);
+  const isAuthenticated = !!auth?.user;
+
   const variantClasses = {
     yellow: "bg-primary-container",
     red: "bg-secondary-container",
@@ -34,15 +54,30 @@ export const RoastBubble = ({
           ${variantClasses[roast.variant]}
         `} style={{ clipPath: 'polygon(0% 0%, 100% 0%, 50% 100%)' }}></div>
       </div>
-      <div className={`flex items-center gap-4 mt-4 ${align === "end" ? "mr-2" : "ml-2"}`}>
+      <div className={`flex items-start gap-4 mt-4 ${align === "end" ? "mr-2" : "ml-2"}`}>
         {align === "end" && (
-          <VoteButtons likes={roast.likes} onVote={(type) => onVote(roast.id, type)} />
+          <ReactionButton
+            reactionCount={roast.reactionCount}
+            reactedByMe={roast.reactedByMe}
+            onToggle={() => onReact(roast.id, roast.reactedByMe)}
+            disabled={!isAuthenticated}
+          />
         )}
-        <span className="font-headline text-xs font-black uppercase tracking-tighter">
-          {roast.user}
-        </span>
+        <div className="flex flex-col gap-1">
+          <span className="font-headline text-xs font-black uppercase tracking-tighter">
+            {roast.user}
+          </span>
+          <span className="font-body text-[10px] font-bold uppercase tracking-wide opacity-70">
+            {formatRoastTimestamp(roast.createdAt)}
+          </span>
+        </div>
         {align !== "end" && (
-          <VoteButtons likes={roast.likes} onVote={(type) => onVote(roast.id, type)} />
+          <ReactionButton
+            reactionCount={roast.reactionCount}
+            reactedByMe={roast.reactedByMe}
+            onToggle={() => onReact(roast.id, roast.reactedByMe)}
+            disabled={!isAuthenticated}
+          />
         )}
       </div>
     </div>
@@ -65,20 +100,25 @@ export const RoastBubbleSkeleton = ({ align = "start" }: { key?: string | number
   </div>
 );
 
-const VoteButtons = ({ likes, onVote }: { likes: number; onVote: (type: 'up' | 'down') => void }) => (
-  <div className="flex border-2 border-on-background rounded-full bg-white overflow-hidden">
+const ReactionButton = ({
+  reactionCount,
+  reactedByMe,
+  onToggle,
+  disabled = false,
+}: {
+  reactionCount: number;
+  reactedByMe: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) => (
+  <div className={`flex border-2 border-on-background rounded-full bg-white overflow-hidden ${disabled ? "opacity-50 grayscale cursor-not-allowed" : ""}`}>
     <button 
-      onClick={() => onVote('up')}
-      className="px-2 py-1 hover:bg-secondary hover:text-white transition-colors"
+      onClick={onToggle}
+      disabled={disabled}
+      className={`px-2 py-1 transition-colors ${reactedByMe ? "bg-secondary text-white" : !disabled ? "hover:bg-secondary hover:text-white" : ""}`}
     >
-      <ThumbsUp size={14} />
+      <Flame size={14} className={reactedByMe ? "fill-white" : ""} />
     </button>
-    <span className="px-2 py-1 font-black text-xs border-x-2 border-on-background">{likes}</span>
-    <button 
-      onClick={() => onVote('down')}
-      className="px-2 py-1 hover:bg-tertiary hover:text-white transition-colors"
-    >
-      <ThumbsDown size={14} />
-    </button>
+    <span className="px-2 py-1 font-black text-xs border-l-2 border-on-background">{reactionCount}</span>
   </div>
 );

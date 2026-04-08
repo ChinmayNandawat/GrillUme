@@ -5,6 +5,59 @@ import { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/error';
 import { env } from '../config/env';
 
+const ACCESS_COOKIE_NAME = 'grillume_access_token';
+const REFRESH_COOKIE_NAME = 'grillume_refresh_token';
+const ACCESS_COOKIE_MAX_AGE_MS = 55 * 60 * 1000;
+const REFRESH_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+const sessionCookieOptions = {
+  httpOnly: true,
+  secure: env.isProduction,
+  sameSite: 'lax' as const,
+  path: '/',
+};
+
+const parseCookieHeader = (cookieHeader: string | undefined): Record<string, string> => {
+  if (!cookieHeader) return {};
+
+  return cookieHeader.split(';').reduce<Record<string, string>>((acc, pair) => {
+    const [rawKey, ...rawValue] = pair.split('=');
+    const key = rawKey?.trim();
+    if (!key) return acc;
+    acc[key] = decodeURIComponent(rawValue.join('=').trim());
+    return acc;
+  }, {});
+};
+
+const readCookie = (req: Request, name: string): string | null => {
+  const cookies = parseCookieHeader(req.headers.cookie);
+  const value = cookies[name];
+  return value || null;
+};
+
+const setSessionCookies = (
+  res: Response,
+  accessToken: string,
+  refreshToken?: string
+): void => {
+  res.cookie(ACCESS_COOKIE_NAME, accessToken, {
+    ...sessionCookieOptions,
+    maxAge: ACCESS_COOKIE_MAX_AGE_MS,
+  });
+
+  if (refreshToken) {
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+      ...sessionCookieOptions,
+      maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+    });
+  }
+};
+
+const clearSessionCookies = (res: Response): void => {
+  res.clearCookie(ACCESS_COOKIE_NAME, sessionCookieOptions);
+  res.clearCookie(REFRESH_COOKIE_NAME, sessionCookieOptions);
+};
+
 type UserStatsPayload = {
   resumes: number;
   roastsReceived: number;
@@ -152,6 +205,7 @@ export const beginGoogleAuth = async (req: Request, res: Response, next: NextFun
         queryParams: {
           prompt: 'select_account',
           access_type: 'offline',
+          response_type: 'code',
         },
       },
     });
@@ -172,17 +226,16 @@ export const beginGoogleAuth = async (req: Request, res: Response, next: NextFun
 
 export const completeGoogleAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { code, accessToken, refreshToken, expiresAt } = req.body as {
+    const { code, accessToken, refreshToken } = req.body as {
       code?: string;
       accessToken?: string;
       refreshToken?: string;
       expiresAt?: number;
     };
 
-    let resolvedAccessToken = accessToken || '';
-    let resolvedRefreshToken = refreshToken;
-    let resolvedExpiresAt = expiresAt;
     let authUser: { id: string; app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> } | null = null;
+    let resolvedAccessToken = '';
+    let resolvedRefreshToken: string | undefined;
 
     if (code) {
       const { data, error } = await supabaseAuth.auth.exchangeCodeForSession(code);
@@ -192,17 +245,19 @@ export const completeGoogleAuth = async (req: Request, res: Response, next: Next
 
       resolvedAccessToken = data.session.access_token;
       resolvedRefreshToken = data.session.refresh_token || undefined;
-      resolvedExpiresAt = data.session.expires_at || undefined;
       authUser = {
         id: data.user.id,
         app_metadata: data.user.app_metadata as Record<string, unknown> | undefined,
         user_metadata: data.user.user_metadata as Record<string, unknown> | undefined,
       };
-    } else if (resolvedAccessToken) {
-      const { data, error } = await supabaseAdmin.auth.getUser(resolvedAccessToken);
+    } else if (accessToken) {
+      const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
       if (error || !data.user) {
         throw new AppError(401, 'Google auth token is invalid', 'GOOGLE_AUTH_CALLBACK_FAILED');
       }
+
+      resolvedAccessToken = accessToken;
+      resolvedRefreshToken = refreshToken || undefined;
       authUser = {
         id: data.user.id,
         app_metadata: data.user.app_metadata as Record<string, unknown> | undefined,
@@ -229,11 +284,10 @@ export const completeGoogleAuth = async (req: Request, res: Response, next: Next
 
     if (userError) throw userError;
 
+    setSessionCookies(res, resolvedAccessToken, resolvedRefreshToken);
+
     if (!existingUser) {
       res.status(200).json({
-        accessToken: resolvedAccessToken,
-        refreshToken: resolvedRefreshToken,
-        expiresAt: resolvedExpiresAt,
         onboardingRequired: true,
         pendingProfile: {
           googleUid: profile.googleUid,
@@ -245,9 +299,6 @@ export const completeGoogleAuth = async (req: Request, res: Response, next: Next
     }
 
     res.status(200).json({
-      accessToken: resolvedAccessToken,
-      refreshToken: resolvedRefreshToken,
-      expiresAt: resolvedExpiresAt,
       onboardingRequired: !existingUser.onboardingComplete,
       user: existingUser,
     });
@@ -398,7 +449,60 @@ export const completeOnboarding = async (
 };
 
 export const logout = async (_req: Request, res: Response): Promise<void> => {
+  clearSessionCookies(res);
   res.status(200).json({ success: true });
+};
+
+export const refreshSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const refreshToken = readCookie(req, REFRESH_COOKIE_NAME);
+
+    if (!refreshToken) {
+      clearSessionCookies(res);
+      throw new AppError(401, 'Missing refresh session', 'REFRESH_REQUIRED');
+    }
+
+    const { data, error } = await supabaseAuth.auth.refreshSession({ refresh_token: refreshToken });
+    if (error || !data?.session?.access_token || !data.user) {
+      clearSessionCookies(res);
+      throw new AppError(401, 'Invalid refresh session', 'REFRESH_FAILED');
+    }
+
+    const refreshedAccessToken = data.session.access_token;
+    const refreshedRefreshToken = data.session.refresh_token || refreshToken;
+
+    setSessionCookies(res, refreshedAccessToken, refreshedRefreshToken);
+
+    const { data: existingUser, error: userError } = await supabase
+      .from('User')
+      .select('*')
+      .eq('googleUid', data.user.id)
+      .maybeSingle();
+
+    if (userError) throw userError;
+
+    if (!existingUser) {
+      const pendingProfile = extractGoogleProfile({
+        id: data.user.id,
+        user_metadata: data.user.user_metadata as Record<string, unknown> | undefined,
+      });
+
+      res.status(200).json({
+        refreshed: true,
+        onboardingRequired: true,
+        pendingProfile,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      refreshed: true,
+      onboardingRequired: !existingUser.onboardingComplete,
+      user: existingUser,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const getMe = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
