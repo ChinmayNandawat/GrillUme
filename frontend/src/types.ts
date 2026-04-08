@@ -43,6 +43,7 @@ export interface BattleScroll {
   name: string;
   date: string;
   roasts: string;
+  description?: string;
   colors: string[];
 }
 

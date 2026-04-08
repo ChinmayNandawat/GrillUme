@@ -358,6 +358,7 @@ export const getBattleScrolls = async (): Promise<BattleScroll[]> => {
       name: `${resume.title}.pdf`,
       date: formatDate(resume.createdAt),
       roasts: String(resume.roastsCount ?? 0),
+      description: resume.details,
       colors: ["bg-primary-container", "bg-tertiary-container"],
     }));
 };

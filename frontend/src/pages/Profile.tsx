@@ -73,10 +73,11 @@ export const Profile = () => {
     if (isMutating) return;
     const scroll = battleScrolls.find((item) => item.id === resumeId);
     const initialTitle = scroll ? scroll.name.replace(/\.pdf$/i, "") : "";
+    const initialDescription = scroll?.description || "";
 
     setEditTargetId(resumeId);
     setEditTitle(initialTitle);
-    setEditDetails("");
+    setEditDetails(initialDescription);
   };
 
   const handleEditConfirm = async () => {
@@ -286,13 +287,13 @@ export const Profile = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-black uppercase tracking-widest mb-2">Details (Optional)</label>
+                <label className="block text-xs font-black uppercase tracking-widest mb-2">Description</label>
                 <textarea
                   rows={4}
                   className="w-full border-4 border-on-background p-3 font-bold"
                   value={editDetails}
                   onChange={(event) => setEditDetails(event.target.value)}
-                  placeholder="Update short summary or focus area..."
+                  placeholder="Update your resume description or focus area..."
                 />
               </div>
 
