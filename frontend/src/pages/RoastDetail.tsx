@@ -10,6 +10,31 @@ import { Resume, Roast } from "../types";
 import { MAX_ROAST_LENGTH } from "../constants";
 import { useAuth } from "../context/AuthContext.tsx";
 
+const byCreatedAtAsc = (a: Roast, b: Roast): number => {
+  const aTime = new Date(a.createdAt).getTime();
+  const bTime = new Date(b.createdAt).getTime();
+  if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0;
+  return aTime - bTime;
+};
+
+const mergeRoastsChronologically = (fetched: Roast[], existing: Roast[]): Roast[] => {
+  const byId = new Map<string, Roast>();
+
+  existing.forEach((roast) => {
+    byId.set(roast.id, roast);
+  });
+
+  fetched.forEach((roast) => {
+    byId.set(roast.id, roast);
+  });
+
+  return Array.from(byId.values()).sort(byCreatedAtAsc);
+};
+
+const appendRoast = (existing: Roast[], nextRoast: Roast): Roast[] => {
+  return mergeRoastsChronologically([nextRoast], existing);
+};
+
 export const RoastDetail = () => {
   const { isAuthenticated, openAuthPanel } = useAuth();
   const { id } = useParams<{ id: string }>();
@@ -28,7 +53,7 @@ export const RoastDetail = () => {
       const data = await getResumeById(id);
       if (data) {
         setResume(data.resume);
-        setRoasts(data.roasts);
+        setRoasts((prev) => mergeRoastsChronologically(data.roasts, prev));
       } else {
         setError("TARGET NOT FOUND! This resume might have been incinerated already.");
       }
@@ -56,7 +81,7 @@ export const RoastDetail = () => {
     setIsSubmitting(true);
     try {
       const newRoast = await addRoast(id, newRoastText);
-      setRoasts(prev => [...prev, newRoast]);
+      setRoasts((prev) => appendRoast(prev, newRoast));
       setNewRoastText("");
       
       // Update local resume comment count for consistency

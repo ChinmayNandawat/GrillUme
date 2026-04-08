@@ -20,6 +20,7 @@ export interface Roast {
   resumeId: string;
   user: string;
   text: string;
+  createdAt: string;
   reactionCount: number;
   reactedByMe: boolean;
   variant: "yellow" | "red" | "blue";

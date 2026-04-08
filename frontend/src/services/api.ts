@@ -149,6 +149,7 @@ const mapRoast = (roast: BackendRoast, index = 0): Roast => ({
   resumeId: roast.resumeId,
   user: roast.username ? `${roast.username}` : "unknown_user",
   text: roast.text,
+  createdAt: roast.createdAt,
   reactionCount: roast.reactionCount ?? 0,
   reactedByMe: roast.reactedByMe ?? false,
   variant: pickRoastVariant(roast.id),

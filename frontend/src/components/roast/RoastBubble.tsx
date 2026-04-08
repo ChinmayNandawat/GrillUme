@@ -4,6 +4,21 @@ import { Skeleton } from "../ui/Skeleton";
 import { useContext } from "react";
 import { AuthContext } from "../../context/AuthContext";
 
+const formatRoastTimestamp = (isoDate: string): string => {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return "UNKNOWN DATE";
+  return date
+    .toLocaleString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    })
+    .toUpperCase();
+};
+
 interface RoastBubbleProps {
   key?: string | number;
   roast: Roast;
@@ -39,7 +54,7 @@ export const RoastBubble = ({
           ${variantClasses[roast.variant]}
         `} style={{ clipPath: 'polygon(0% 0%, 100% 0%, 50% 100%)' }}></div>
       </div>
-      <div className={`flex items-center gap-4 mt-4 ${align === "end" ? "mr-2" : "ml-2"}`}>
+      <div className={`flex items-start gap-4 mt-4 ${align === "end" ? "mr-2" : "ml-2"}`}>
         {align === "end" && (
           <ReactionButton
             reactionCount={roast.reactionCount}
@@ -48,9 +63,14 @@ export const RoastBubble = ({
             disabled={!isAuthenticated}
           />
         )}
-        <span className="font-headline text-xs font-black uppercase tracking-tighter">
-          {roast.user}
-        </span>
+        <div className="flex flex-col gap-1">
+          <span className="font-headline text-xs font-black uppercase tracking-tighter">
+            {roast.user}
+          </span>
+          <span className="font-body text-[10px] font-bold uppercase tracking-wide opacity-70">
+            {formatRoastTimestamp(roast.createdAt)}
+          </span>
+        </div>
         {align !== "end" && (
           <ReactionButton
             reactionCount={roast.reactionCount}
