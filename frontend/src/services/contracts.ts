@@ -23,9 +23,13 @@ export type PendingGoogleProfile = {
 };
 
 export type GoogleAuthCallbackResponse = {
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt?: number;
+  onboardingRequired: boolean;
+  user?: AuthUser;
+  pendingProfile?: PendingGoogleProfile;
+};
+
+export type RefreshSessionResponse = {
+  refreshed: boolean;
   onboardingRequired: boolean;
   user?: AuthUser;
   pendingProfile?: PendingGoogleProfile;

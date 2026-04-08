@@ -16,6 +16,7 @@ export const googleCallbackSchema = z
     refreshToken: z.string().trim().min(1).optional(),
     expiresAt: z.coerce.number().int().positive().optional(),
   })
+  .strict()
   .refine((payload) => Boolean(payload.code || payload.accessToken), {
     message: 'Either code or accessToken is required',
   });

@@ -9,6 +9,7 @@ import {
   CompleteOnboardingResponse,
   GoogleAuthBeginResponse,
   GoogleAuthCallbackResponse,
+  RefreshSessionResponse,
   UsernameAvailabilityResponse,
 } from "./contracts";
 
@@ -69,20 +70,37 @@ const parseError = async (response: Response): Promise<Error> => {
   return new Error(message);
 };
 
-const requestJson = async <T>(
-  path: string,
-  options: RequestInit = {},
-  _includeAuth = false
-): Promise<T> => {
-  void _includeAuth;
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+const shouldAttemptRefresh = (path: string): boolean => {
+  return !path.startsWith("/api/auth/refresh") && !path.startsWith("/api/auth/logout");
+};
+
+const requestJson = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
+  const requestInit: RequestInit = {
     ...options,
     credentials: "include",
     headers: {
       ...createHeaders(true),
       ...(options.headers || {}),
     },
-  });
+  };
+
+  let response = await fetch(`${API_BASE_URL}${path}`, requestInit);
+
+  if (response.status === 401 && shouldAttemptRefresh(path)) {
+    try {
+      const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: createHeaders(true),
+      });
+
+      if (refreshResponse.ok) {
+        response = await fetch(`${API_BASE_URL}${path}`, requestInit);
+      }
+    } catch {
+      // Ignore refresh attempt errors and use original 401 response handling.
+    }
+  }
 
   if (!response.ok) {
     throw await parseError(response);
@@ -155,7 +173,7 @@ const normalizeFileUrl = (rawUrl?: string | null): string | undefined => {
 };
 
 export const beginGoogleSignIn = async (): Promise<GoogleAuthBeginResponse> => {
-  return requestJson<GoogleAuthBeginResponse>("/api/auth/google/url", { method: "GET" }, false);
+  return requestJson<GoogleAuthBeginResponse>("/api/auth/google/url", { method: "GET" });
 };
 
 export const completeGoogleSignIn = async (code: string): Promise<GoogleAuthCallbackResponse> => {
@@ -164,8 +182,7 @@ export const completeGoogleSignIn = async (code: string): Promise<GoogleAuthCall
     {
       method: "POST",
       body: JSON.stringify({ code }),
-    },
-    false
+    }
   );
 };
 
@@ -180,8 +197,7 @@ export const completeGoogleSignInFromPayload = async (payload: {
     {
       method: "POST",
       body: JSON.stringify(payload),
-    },
-    false
+    }
   );
 };
 
@@ -191,8 +207,7 @@ export const checkUsernameAvailability = async (
   const params = new URLSearchParams({ username });
   return requestJson<UsernameAvailabilityResponse>(
     `/api/auth/username-availability?${params.toString()}`,
-    { method: "GET" },
-    false
+    { method: "GET" }
   );
 };
 
@@ -204,17 +219,20 @@ export const completeUsernameOnboarding = async (
     {
       method: "POST",
       body: JSON.stringify({ username }),
-    },
-    true
+    }
   );
 };
 
+export const refreshSession = async (): Promise<RefreshSessionResponse> => {
+  return requestJson<RefreshSessionResponse>("/api/auth/refresh", { method: "POST" });
+};
+
 export const logoutSession = async (): Promise<void> => {
-  await requestJson<{ success: boolean }>("/api/auth/logout", { method: "POST" }, true);
+  await requestJson<{ success: boolean }>("/api/auth/logout", { method: "POST" });
 };
 
 export const getCurrentUser = async (): Promise<AuthUser> => {
-  const response = await requestJson<{ user: AuthUser }>("/api/auth/me", { method: "GET" }, true);
+  const response = await requestJson<{ user: AuthUser }>("/api/auth/me", { method: "GET" });
   return response.user;
 };
 
@@ -230,8 +248,7 @@ export const getResumes = async (
 
   const response = await requestJson<BackendResumeListResponse>(
     `/api/resumes?${params.toString()}`,
-    { method: "GET" },
-    false
+    { method: "GET" }
   );
 
   return {
@@ -247,8 +264,7 @@ export const getResumeById = async (id: string): Promise<{ resume: Resume; roast
   try {
     const response = await requestJson<{ resume: BackendResume; roasts: BackendRoast[] }>(
       `/api/resumes/${id}`,
-      { method: "GET" },
-      false
+      { method: "GET" }
     );
 
     const roastsWithLikes = await Promise.all(
@@ -256,8 +272,7 @@ export const getResumeById = async (id: string): Promise<{ resume: Resume; roast
         try {
           const votes = await requestJson<BackendVotesSummary>(
             `/api/votes/roast/${roast.id}`,
-            { method: "GET" },
-            false
+            { method: "GET" }
           );
           return mapRoast(roast, votes.upvotes - votes.downvotes, index);
         } catch {
@@ -286,8 +301,7 @@ export const addRoast = async (resumeId: string, text: string): Promise<Roast> =
     {
       method: "POST",
       body: JSON.stringify({ resumeId, text }),
-    },
-    true
+    }
   );
 
   return mapRoast(response.roast, 0);
@@ -299,15 +313,14 @@ export const voteRoast = async (roastId: string, type: "up" | "down"): Promise<{
     {
       method: "POST",
       body: JSON.stringify({ roastId, type }),
-    },
-    true
+    }
   );
 
   return { likes: response.upvotes - response.downvotes };
 };
 
 export const getUserStats = async (): Promise<UserStats> => {
-  const response = await requestJson<BackendMeResponse>("/api/auth/me", { method: "GET" }, true);
+  const response = await requestJson<BackendMeResponse>("/api/auth/me", { method: "GET" });
 
   const resumesCount = response.stats?.resumes ?? response.user._count?.resumes ?? 0;
   const roastsReceived = response.stats?.roastsReceived ?? response.user._count?.roasts ?? 0;
@@ -336,8 +349,7 @@ export const getUserStats = async (): Promise<UserStats> => {
 export const getBattleScrolls = async (): Promise<BattleScroll[]> => {
   const list = await requestJson<{ data: BackendResume[]; total: number }>(
     "/api/resumes/mine",
-    { method: "GET" },
-    true
+    { method: "GET" }
   );
 
   return list.data
@@ -391,8 +403,7 @@ export const uploadResume = async (resumeData: {
         isClassified: resumeData.isClassified,
         fileUrl,
       }),
-    },
-    true
+    }
   );
 
   return mapResume(createResponse.resume);
@@ -407,8 +418,7 @@ export const updateResumeById = async (
     {
       method: "PATCH",
       body: JSON.stringify(payload),
-    },
-    true
+    }
   );
 
   return mapResume(response.resume);

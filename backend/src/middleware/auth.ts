@@ -6,6 +6,25 @@ export interface AuthRequest extends Request {
   userId?: string;
 }
 
+const ACCESS_COOKIE_NAME = 'grillume_access_token';
+
+const parseCookieHeader = (cookieHeader: string | undefined): Record<string, string> => {
+  if (!cookieHeader) return {};
+
+  return cookieHeader.split(';').reduce<Record<string, string>>((acc, pair) => {
+    const [rawKey, ...rawValue] = pair.split('=');
+    const key = rawKey?.trim();
+    if (!key) return acc;
+    acc[key] = decodeURIComponent(rawValue.join('=').trim());
+    return acc;
+  }, {});
+};
+
+const readCookieToken = (req: Request): string | null => {
+  const cookies = parseCookieHeader(req.headers.cookie);
+  return cookies[ACCESS_COOKIE_NAME] || null;
+};
+
 const readBearerToken = (req: Request): string | null => {
   const authHeader = req.headers['authorization'];
   if (!authHeader) return null;
@@ -13,12 +32,16 @@ const readBearerToken = (req: Request): string | null => {
   return token || null;
 };
 
+const readAuthToken = (req: Request): string | null => {
+  return readCookieToken(req) || readBearerToken(req);
+};
+
 export const authenticateSupabaseToken = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const token = readBearerToken(req);
+  const token = readAuthToken(req);
 
   if (!token) {
     res.status(401).json({ message: 'Access denied: No token provided' });
@@ -44,7 +67,7 @@ export const authenticateToken = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const token = readBearerToken(req);
+  const token = readAuthToken(req);
   if (!token) {
     res.status(401).json({ message: 'Access denied: No token provided' });
     return;

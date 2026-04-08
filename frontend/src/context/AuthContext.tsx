@@ -1,5 +1,4 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { STORAGE_KEYS } from "../constants";
 import { AuthUser } from "../types";
 import {
   beginGoogleSignIn,
@@ -12,7 +11,6 @@ import { PendingGoogleProfile } from "../services/contracts";
 
 export type AuthContextValue = {
   user: AuthUser | null;
-  token: string | null;
   isAuthenticated: boolean;
   isAuthLoading: boolean;
   authError: string | null;
@@ -36,87 +34,32 @@ export type AuthContextValue = {
 // eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const SESSION_TOKEN_SENTINEL = "cookie-session";
-
-const getStoredPendingProfile = (): PendingGoogleProfile | null => {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(STORAGE_KEYS.AUTH_PENDING_PROFILE);
-  if (!raw) return null;
-
-  try {
-    return JSON.parse(raw) as PendingGoogleProfile;
-  } catch {
-    return null;
-  }
-};
-
-const getStoredOnboardingRequired = (): boolean => {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(STORAGE_KEYS.AUTH_ONBOARDING_REQUIRED) === "true";
-};
-
-const clearLegacyAuthStorage = (): void => {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
-  localStorage.removeItem(STORAGE_KEYS.AUTH_REFRESH_TOKEN);
-  localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN_EXPIRES_AT);
-};
-
-const storeOnboardingState = (
-  onboardingRequired: boolean,
-  pendingProfile: PendingGoogleProfile | null
-): void => {
-  if (typeof window === "undefined") return;
-
-  if (!onboardingRequired) {
-    localStorage.removeItem(STORAGE_KEYS.AUTH_ONBOARDING_REQUIRED);
-    localStorage.removeItem(STORAGE_KEYS.AUTH_PENDING_PROFILE);
-    return;
-  }
-
-  localStorage.setItem(STORAGE_KEYS.AUTH_ONBOARDING_REQUIRED, "true");
-  if (pendingProfile) {
-    localStorage.setItem(STORAGE_KEYS.AUTH_PENDING_PROFILE, JSON.stringify(pendingProfile));
-  }
-};
-
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [onboardingRequired, setOnboardingRequired] = useState<boolean>(getStoredOnboardingRequired());
-  const [pendingProfile, setPendingProfile] = useState<PendingGoogleProfile | null>(getStoredPendingProfile());
+  const [onboardingRequired, setOnboardingRequired] = useState<boolean>(false);
+  const [pendingProfile, setPendingProfile] = useState<PendingGoogleProfile | null>(null);
   const [isAuthPanelOpen, setIsAuthPanelOpen] = useState(false);
 
   const clearSession = () => {
-    setToken(null);
     setUser(null);
     setOnboardingRequired(false);
     setPendingProfile(null);
-    clearLegacyAuthStorage();
-    storeOnboardingState(false, null);
   };
 
   useEffect(() => {
     const bootstrapAuth = async () => {
-      clearLegacyAuthStorage();
-
       try {
         const currentUser = await getCurrentUser();
-        setToken(SESSION_TOKEN_SENTINEL);
         setUser(currentUser);
         setOnboardingRequired(false);
         setPendingProfile(null);
-        storeOnboardingState(false, null);
       } catch (error) {
         const message = error instanceof Error ? error.message.toLowerCase() : "";
         if (message.includes("onboarding")) {
-          setToken(SESSION_TOKEN_SENTINEL);
           setUser(null);
           setOnboardingRequired(true);
-          setPendingProfile(getStoredPendingProfile());
-          storeOnboardingState(true, getStoredPendingProfile());
         } else {
           clearSession();
         }
@@ -158,20 +101,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthError(null);
     const response = await completeGoogleSignInFromPayload(payload);
 
-    setToken(SESSION_TOKEN_SENTINEL);
-
     if (response.onboardingRequired || !response.user) {
       setUser(null);
       setOnboardingRequired(true);
       setPendingProfile(response.pendingProfile || null);
-      storeOnboardingState(true, response.pendingProfile || null);
       return { onboardingRequired: true };
     }
 
     setUser(response.user);
     setOnboardingRequired(false);
     setPendingProfile(null);
-    storeOnboardingState(false, null);
     return { onboardingRequired: false };
   };
 
@@ -181,12 +120,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(response.user);
     setOnboardingRequired(false);
     setPendingProfile(null);
-    storeOnboardingState(false, null);
   };
 
   const logout = async (): Promise<void> => {
     try {
-      if (token || user || onboardingRequired) {
+      if (user || onboardingRequired) {
         await logoutSession();
       }
     } catch {
@@ -199,7 +137,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const value: AuthContextValue = {
     user,
-    token,
     isAuthenticated: Boolean(user && !onboardingRequired),
     isAuthLoading,
     authError,
