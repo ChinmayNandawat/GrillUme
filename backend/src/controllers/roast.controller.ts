@@ -17,11 +17,21 @@ const getReactionCountMap = async (roastIds: string[]): Promise<Map<string, numb
   const map = new Map<string, number>();
   if (roastIds.length === 0) return map;
 
-  const { data, error } = await supabase.from('Vote').select('roastId').in('roastId', roastIds);
-  if (error) throw error;
+  const countResults = await Promise.all(
+    roastIds.map(async (roastId) => {
+      const { count, error } = await supabase
+        .from('Vote')
+        .select('*', { count: 'exact', head: true })
+        .eq('roastId', roastId);
 
-  (data || []).forEach((reaction) => {
-    map.set(reaction.roastId, (map.get(reaction.roastId) || 0) + 1);
+      if (error) throw error;
+
+      return { roastId, count: count || 0 };
+    })
+  );
+
+  countResults.forEach(({ roastId, count }) => {
+    map.set(roastId, count);
   });
 
   return map;
