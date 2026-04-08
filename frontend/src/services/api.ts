@@ -4,6 +4,7 @@ import {
   BackendMeResponse,
   BackendReactionSummary,
   BackendResume,
+  BackendResumeDetailResponse,
   BackendResumeListResponse,
   BackendRoast,
   CompleteOnboardingResponse,
@@ -150,7 +151,10 @@ const mapRoast = (roast: BackendRoast, index = 0): Roast => ({
   user: roast.username ? `${roast.username}` : "unknown_user",
   text: roast.text,
   createdAt: roast.createdAt,
-  reactionCount: roast.reactionCount ?? 0,
+  reactionCount: roast.reactionCount ?? (roast.upvotes ?? 0) + (roast.downvotes ?? 0),
+  upvotes: roast.upvotes,
+  downvotes: roast.downvotes,
+  netScore: roast.netScore,
   reactedByMe: roast.reactedByMe ?? false,
   variant: pickRoastVariant(roast.id),
   align: index % 2 === 0 ? "end" : undefined,
@@ -266,6 +270,34 @@ export const getResumeById = async (id: string): Promise<{ resume: Resume; roast
   try {
     const response = await requestJson<{ resume: BackendResume; roasts: BackendRoast[] }>(
       `/api/resumes/${id}`,
+      { method: "GET" }
+    );
+
+    const mappedRoasts = response.roasts.map((roast, index) => mapRoast(roast, index));
+    const reactionsTotal = mappedRoasts.reduce((sum, roast) => sum + roast.reactionCount, 0);
+
+    return {
+      resume: mapResume(response.resume, mappedRoasts.length, reactionsTotal),
+      roasts: mappedRoasts,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.toLowerCase().includes("not found")) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+export const getResumeRoastsById = async (
+  id: string,
+  includeVotes = true
+): Promise<{ resume: Resume; roasts: Roast[] } | null> => {
+  try {
+    const params = new URLSearchParams();
+    if (!includeVotes) params.set("includeVotes", "false");
+
+    const response = await requestJson<BackendResumeDetailResponse>(
+      `/api/resumes/${id}/roasts${params.toString() ? `?${params.toString()}` : ""}`,
       { method: "GET" }
     );
 

@@ -22,6 +22,9 @@ export interface Roast {
   text: string;
   createdAt: string;
   reactionCount: number;
+  upvotes?: number;
+  downvotes?: number;
+  netScore?: number;
   reactedByMe: boolean;
   variant: "yellow" | "red" | "blue";
   align?: "end";

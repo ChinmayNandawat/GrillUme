@@ -69,6 +69,9 @@ export type BackendRoast = {
   text: string;
   createdAt: string;
   reactionCount?: number;
+  upvotes?: number;
+  downvotes?: number;
+  netScore?: number;
   reactedByMe?: boolean;
 };
 
@@ -86,6 +89,11 @@ export type BackendResumeListResponse = {
   data: BackendResume[];
   total: number;
   metrics?: { totalBurns?: number };
+};
+
+export type BackendResumeDetailResponse = {
+  resume: BackendResume;
+  roasts: BackendRoast[];
 };
 
 export type BackendReactionSummary = {

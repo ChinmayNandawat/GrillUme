@@ -5,7 +5,7 @@ import { ErrorState } from "../components/ui/ErrorState";
 import { RoastBubble, RoastBubbleSkeleton } from "../components/roast/RoastBubble";
 import { useParams } from "react-router-dom";
 import { useEffect, useState, useCallback } from "react";
-import { getResumeById, addRoast, reactToRoast, unreactToRoast } from "../services/api.ts";
+import { getResumeRoastsById, addRoast, reactToRoast, unreactToRoast } from "../services/api.ts";
 import { Resume, Roast } from "../types";
 import { MAX_ROAST_LENGTH } from "../constants";
 import { useAuth } from "../context/AuthContext.tsx";
@@ -50,7 +50,7 @@ export const RoastDetail = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getResumeById(id);
+      const data = await getResumeRoastsById(id);
       if (data) {
         setResume(data.resume);
         setRoasts((prev) => mergeRoastsChronologically(data.roasts, prev));
