@@ -6,6 +6,7 @@ import { AppError } from '../middleware/error';
 import { env } from '../config/env';
 import path from 'path';
 import { cloudinary } from '../config/cloudinary';
+import { sanitizeSearchQuery } from '../utils/searchSanitizer';
 
 type ResumeRow = {
   id: string;
@@ -148,9 +149,27 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
   try {
     const page = parsePositiveInt(req.query.page as string | undefined, 1);
     const limit = Math.min(parsePositiveInt(req.query.limit as string | undefined, 10), 50);
-    const query = ((req.query.query as string | undefined) || '').trim();
+    const rawQuery = (req.query.query as string | undefined) || '';
+    const sanitizedQuery = sanitizeSearchQuery(rawQuery, 100);
     const from = (page - 1) * limit;
     const to = from + limit - 1;
+
+    if (sanitizedQuery.becameEmptyAfterSanitization) {
+      const totalBurns = await getGlobalTotalBurns();
+
+      res.status(200).json({
+        data: [],
+        page,
+        limit,
+        total: 0,
+        metrics: {
+          totalBurns,
+        },
+      });
+      return;
+    }
+
+    const query = sanitizedQuery.value;
     const matchingUserIds = query ? await getMatchingUserIdsByUsername(query) : [];
 
     let supabaseQuery = supabase

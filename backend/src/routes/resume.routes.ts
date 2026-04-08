@@ -3,10 +3,12 @@ import { createResume, deleteResume, getResumeById, updateResume, getResumes, up
 import { authenticateToken } from '../middleware/auth';
 import { uploadResumeMiddleware } from '../middleware/upload';
 import { uploadLimiter, actionLimiter } from '../middleware/rateLimiter';
+import { validateRequest } from '../middleware/validate';
+import { listResumesQuerySchema } from '../validation/schemas';
 
 const router = Router();
 
-router.get('/', getResumes);
+router.get('/', validateRequest({ query: listResumesQuerySchema }), getResumes);
 router.get('/mine', authenticateToken, getMyResumes);
 router.get('/:id', getResumeById);
 router.post('/upload', authenticateToken, uploadLimiter, uploadResumeMiddleware.single('file'), uploadResumeFile);

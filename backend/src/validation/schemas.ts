@@ -40,7 +40,7 @@ export const completeOnboardingSchema = z.object({
 export const listResumesQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(50).optional(),
-  query: z.string().trim().optional(),
+  query: z.string().trim().max(100).optional(),
 });
 
 export const resumeIdParamSchema = z.object({
