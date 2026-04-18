@@ -5,7 +5,10 @@ import { useContext } from "react";
 import { AuthContext } from "../../context/AuthContext";
 
 const formatRoastTimestamp = (isoDate: string): string => {
-  const date = new Date(isoDate);
+  const normalizedIsoDate = /([zZ]|[+\-]\d{2}:?\d{2})$/.test(isoDate)
+    ? isoDate
+    : `${isoDate}Z`;
+  const date = new Date(normalizedIsoDate);
   if (Number.isNaN(date.getTime())) return "UNKNOWN DATE";
   return date
     .toLocaleString("en-US", {
@@ -15,8 +18,10 @@ const formatRoastTimestamp = (isoDate: string): string => {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
+      timeZone: "Asia/Kolkata",
     })
-    .toUpperCase();
+    .toUpperCase()
+    .concat(" IST");
 };
 
 interface RoastBubbleProps {
