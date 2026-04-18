@@ -52,6 +52,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'GrillUme backend is running',
+    health: '/api/health',
+  });
+});
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 
