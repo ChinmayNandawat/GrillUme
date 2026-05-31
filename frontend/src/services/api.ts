@@ -465,13 +465,12 @@ export const uploadResume = async (resumeData: {
     });
 
     if (!uploadResponse.ok) {
-      console.error('Failed to upload redacted file, continuing without it.');
-    } else {
-      const uploadPayload = (await uploadResponse.json()) as {
-        file: { url: string; absoluteUrl?: string };
-      };
-      redactedFileUrl = uploadPayload.file.absoluteUrl || normalizeFileUrl(uploadPayload.file.url) || null;
+      throw await parseError(uploadResponse);
     }
+    const uploadPayload = (await uploadResponse.json()) as {
+      file: { url: string; absoluteUrl?: string };
+    };
+    redactedFileUrl = uploadPayload.file.absoluteUrl || normalizeFileUrl(uploadPayload.file.url) || null;
   }
 
   const createResponse = await requestJson<{ resume: BackendResume }>(

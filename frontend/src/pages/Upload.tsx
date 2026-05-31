@@ -27,6 +27,14 @@ export const Upload = () => {
     }
     if (!title.trim() || isUploading) return;
     
+    if (isClassified && selectedFile) {
+      const isPdf = selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf');
+      if (!isPdf) {
+        setError("Classified mode is currently only supported for PDF files. Please upload a PDF or disable Classified Mode.");
+        return;
+      }
+    }
+
     setIsUploading(true);
     setError(null);
     try {
