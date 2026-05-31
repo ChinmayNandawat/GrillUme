@@ -1,4 +1,4 @@
-import { Flame, ExternalLink, Edit3, MessageSquareOff } from "lucide-react";
+import { Flame, ExternalLink, Edit3, MessageSquareOff, Shield, Eye, EyeOff } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ErrorState } from "../components/ui/ErrorState";
@@ -36,7 +36,7 @@ const appendRoast = (existing: Roast[], nextRoast: Roast): Roast[] => {
 };
 
 export const RoastDetail = () => {
-  const { isAuthenticated, openAuthPanel } = useAuth();
+  const { isAuthenticated, openAuthPanel, user } = useAuth();
   const { id } = useParams<{ id: string }>();
   const [resume, setResume] = useState<Resume | null>(null);
   const [roasts, setRoasts] = useState<Roast[]>([]);
@@ -44,6 +44,7 @@ export const RoastDetail = () => {
   const [error, setError] = useState<string | null>(null);
   const [newRoastText, setNewRoastText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
 
   const fetchDetail = useCallback(async () => {
     if (!id) return;
@@ -170,8 +171,14 @@ export const RoastDetail = () => {
     );
   }
 
-  const isPdfResume = Boolean(resume.pdfUrl && resume.pdfUrl.toLowerCase().endsWith(".pdf"));
-  const previewImageUrl = !isPdfResume ? (resume.pdfUrl || resume.avatar || "") : "";
+  const isOwner = Boolean(resume.userId && user?.id && resume.userId === user.id);
+  const hasRedactedVersion = Boolean(resume.isClassified && resume.originalPdfUrl);
+  const displayUrl = hasRedactedVersion && isOwner && showOriginal
+    ? resume.originalPdfUrl
+    : resume.pdfUrl;
+
+  const isPdfResume = Boolean(displayUrl && displayUrl.toLowerCase().endsWith(".pdf"));
+  const previewImageUrl = !isPdfResume ? (displayUrl || resume.avatar || "") : "";
   const displayFires = String(resume.fires);
 
   return (
@@ -182,11 +189,17 @@ export const RoastDetail = () => {
           <div className="absolute -top-4 -left-4 bg-secondary text-white font-headline font-black px-6 py-2 uppercase tracking-tighter text-2xl z-10 -rotate-2 border-2 border-on-background shadow-[3px_3px_0px_0px_#383835]">
             The Target!
           </div>
+          {resume.isClassified && (
+            <div className="absolute -top-4 -right-4 bg-on-background text-white font-headline font-black px-4 py-2 uppercase tracking-tighter text-lg z-10 rotate-2 border-2 border-secondary shadow-[3px_3px_0px_0px_#cc0100] flex items-center gap-2">
+              <Shield size={18} className="fill-secondary text-secondary" />
+              CLASSIFIED
+            </div>
+          )}
           <div className="bg-on-background p-3 rounded-lg shadow-[6px_6px_0px_0px_#383835] overflow-hidden">
             <div className="bg-white border-4 border-on-background min-h-[800px] flex items-center justify-center relative">
               {isPdfResume ? (
                 <iframe
-                  src={resume.pdfUrl}
+                  src={displayUrl}
                   title="Resume PDF Preview"
                   className="w-full h-[800px] bg-white"
                 />
@@ -215,18 +228,37 @@ export const RoastDetail = () => {
               <Flame size={20} className="text-secondary fill-secondary" />
               {displayFires} Fires
             </div>
+            {resume.isClassified && (
+              <div className="flex items-center gap-2 bg-on-background text-white border-2 border-on-background px-4 py-3 font-black uppercase text-xs tracking-widest">
+                <Shield size={16} className="fill-secondary text-secondary" />
+                PII REDACTED
+              </div>
+            )}
           </div>
-          {resume.pdfUrl ? (
-            <a href={resume.pdfUrl} target="_blank" rel="noreferrer">
-              <Button variant="tertiary" className="px-6 py-3 text-sm" icon={<ExternalLink size={18} />} ariaLabel="Open PDF document">
-                Open PDF
+          <div className="flex gap-2">
+            {isOwner && hasRedactedVersion && (
+              <Button 
+                variant="outline" 
+                className="px-4 py-3 text-sm" 
+                icon={showOriginal ? <EyeOff size={18} /> : <Eye size={18} />}
+                ariaLabel={showOriginal ? "Show redacted version" : "Show original version"}
+                onClick={() => setShowOriginal(!showOriginal)}
+              >
+                {showOriginal ? "SHOW REDACTED" : "SHOW ORIGINAL"}
               </Button>
-            </a>
-          ) : (
-            <Button variant="tertiary" className="px-6 py-3 text-sm" icon={<ExternalLink size={18} />} ariaLabel="Open PDF document" disabled>
-              No File
-            </Button>
-          )}
+            )}
+            {displayUrl ? (
+              <a href={displayUrl} target="_blank" rel="noreferrer">
+                <Button variant="tertiary" className="px-6 py-3 text-sm" icon={<ExternalLink size={18} />} ariaLabel="Open PDF document">
+                  Open PDF
+                </Button>
+              </a>
+            ) : (
+              <Button variant="tertiary" className="px-6 py-3 text-sm" icon={<ExternalLink size={18} />} ariaLabel="Open PDF document" disabled>
+                No File
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

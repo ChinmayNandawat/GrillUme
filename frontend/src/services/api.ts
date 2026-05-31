@@ -130,20 +130,36 @@ export const checkBackendHealth = async (path = "/api/health", timeoutMs = 2500)
   }
 };
 
-const mapResume = (resume: BackendResume, roastsCount = 0, likesCount = 0): Resume => ({
-  id: resume.id,
-  userId: resume.userId,
-  ownerUsername: resume.ownerUsername,
-  name: resume.ownerUsername ? `@${resume.ownerUsername}` : "@unknown_user",
-  role: resume.title,
-  date: formatDate(resume.createdAt),
-  fires: String(resume.burnsCount ?? likesCount),
-  comments: String(resume.roastsCount ?? roastsCount),
-  avatar: resume.ownerAvatarUrl,
-  quote: resume.details,
-  variant: pickVariant(resume.id),
-  pdfUrl: normalizeFileUrl(resume.fileUrl),
-});
+const mapResume = (resume: BackendResume, roastsCount = 0, likesCount = 0): Resume => {
+  // Backend now always sends both fileUrl (original) and redactedFileUrl.
+  // For classified resumes: default to the redacted version for display.
+  // Store the original so owners can toggle to it.
+  const originalFileUrl = normalizeFileUrl(resume.fileUrl);
+  const redactedUrl = normalizeFileUrl(resume.redactedFileUrl);
+
+  // For classified resumes with a redacted copy, show redacted by default.
+  // For non-classified or when no redacted copy exists, show original.
+  const displayUrl = resume.isClassified && redactedUrl
+    ? redactedUrl
+    : originalFileUrl;
+
+  return {
+    id: resume.id,
+    userId: resume.userId,
+    ownerUsername: resume.ownerUsername,
+    name: resume.ownerUsername ? `@${resume.ownerUsername}` : "@unknown_user",
+    role: resume.title,
+    date: formatDate(resume.createdAt),
+    fires: String(resume.burnsCount ?? likesCount),
+    comments: String(resume.roastsCount ?? roastsCount),
+    avatar: resume.ownerAvatarUrl,
+    quote: resume.details,
+    variant: pickVariant(resume.id),
+    isClassified: resume.isClassified,
+    pdfUrl: displayUrl,
+    originalPdfUrl: resume.isClassified && redactedUrl ? originalFileUrl : undefined,
+  };
+};
 
 const mapRoast = (roast: BackendRoast, index = 0): Roast => ({
   id: roast.id,
@@ -389,14 +405,33 @@ export const getBattleScrolls = async (): Promise<BattleScroll[]> => {
     }));
 };
 
+export const detectPii = async (file: File): Promise<{ piiFound: Array<{ type: string; value: string; source: string }> }> => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE_URL}/api/resumes/detect-pii`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return response.json();
+};
+
 export const uploadResume = async (resumeData: {
   title: string;
   field: string;
   details: string;
   isClassified: boolean;
   file?: File | null;
+  redactedFile?: File | null;
 }): Promise<Resume> => {
   let fileUrl: string | null = null;
+  let redactedFileUrl: string | null = null;
 
   if (resumeData.file) {
     const formData = new FormData();
@@ -419,6 +454,26 @@ export const uploadResume = async (resumeData: {
     fileUrl = uploadPayload.file.absoluteUrl || normalizeFileUrl(uploadPayload.file.url) || null;
   }
 
+  if (resumeData.redactedFile) {
+    const formData = new FormData();
+    formData.append("file", resumeData.redactedFile);
+
+    const uploadResponse = await fetch(`${API_BASE_URL}/api/resumes/upload`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+
+    if (!uploadResponse.ok) {
+      console.error('Failed to upload redacted file, continuing without it.');
+    } else {
+      const uploadPayload = (await uploadResponse.json()) as {
+        file: { url: string; absoluteUrl?: string };
+      };
+      redactedFileUrl = uploadPayload.file.absoluteUrl || normalizeFileUrl(uploadPayload.file.url) || null;
+    }
+  }
+
   const createResponse = await requestJson<{ resume: BackendResume }>(
     "/api/resumes",
     {
@@ -429,6 +484,7 @@ export const uploadResume = async (resumeData: {
         details: resumeData.details,
         isClassified: resumeData.isClassified,
         fileUrl,
+        redactedFileUrl,
       }),
     }
   );

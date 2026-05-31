@@ -21,6 +21,7 @@ const envSchema = z
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(600),
     AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(25),
+    GEMINI_API_KEY: z.string().trim().min(1).optional(),
   })
   .superRefine((input, ctx) => {
     if (input.NODE_ENV === 'production' && input.JWT_SECRET.length < 32) {
