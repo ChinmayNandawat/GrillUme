@@ -205,8 +205,12 @@ export function detectPiiWithRegex(text: string): PiiMatch[] {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   if (lines.length > 0) {
     const firstLine = lines[0];
-    // Make sure it doesn't look like contact info
-    if (firstLine.length < 50 && !firstLine.includes('@') && !/\d{5}/.test(firstLine)) {
+    const blacklist = ["CURRICULUM VITAE", "RESUME", "PROFESSIONAL SUMMARY", "SUMMARY", "OBJECTIVE", "PROFILE", "SKILLS", "EXPERIENCE", "EDUCATION"];
+    const isBlacklisted = blacklist.some(term => firstLine.toLowerCase() === term.toLowerCase());
+    const isAllCaps = /^[A-Z\s]{3,}$/.test(firstLine);
+
+    // Make sure it doesn't look like contact info or a generic heading
+    if (firstLine.length < 50 && !firstLine.includes('@') && !/\d{5}/.test(firstLine) && !isBlacklisted && !isAllCaps) {
       matches.push({ type: 'name', value: firstLine, source: 'regex' });
     }
   }
@@ -323,10 +327,12 @@ function normalizeType(raw: string): PiiMatch['type'] {
 // --- Utility functions for merging both layers ---
 
 /**
- * Merge regex and LLM results, removing exact-duplicate values.
+ * Merge results, removing exact-duplicate values.
  *
- * Deduplication is case-insensitive on the `value` field.  If a value is
- * found by both regex and LLM the regex entry is kept (it is more precise).
+ * Deduplication is case-insensitive on the `value` field. When duplicates exist,
+ * the first occurrence in the input array is kept (i.e., preference depends on the caller's ordering).
+ * Callers (e.g., detectPii) must merge their arrays to determine precedence.
+ * (A future change could accept a `preferRegex` flag or inspect a `source` field and prefer regex entries).
  */
 function deduplicateMatches(matches: PiiMatch[]): PiiMatch[] {
   const seen = new Map<string, PiiMatch>();
@@ -351,8 +357,11 @@ export async function detectPii(text: string): Promise<PiiMatch[]> {
   const llmMatches = await detectPiiWithLlm(text);
 
   if (llmMatches !== null) {
-    console.log(`PII Detection complete: Used LLM Engine. Found ${llmMatches.length} matches.`);
-    return deduplicateMatches(llmMatches);
+    const regexMatches = detectPiiWithRegex(text);
+    const combinedMatches = [...regexMatches, ...llmMatches];
+    const deduplicated = deduplicateMatches(combinedMatches);
+    console.log(`PII Detection complete: Used LLM & Regex Engines. Found ${deduplicated.length} matches.`);
+    return deduplicated;
   }
 
   console.log('LLM Engine failed or skipped. Falling back to Regex Engine...');

@@ -739,45 +739,6 @@ const uploadToCloudinary = async (
   });
 };
 
-// ---------------------------------------------------------------------------
-// PII Redaction — Cloudinary Pipeline Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Upload a raw buffer to Cloudinary.
- */
-const uploadBufferToCloudinary = async (
-  buffer: Buffer,
-  mimeType: string,
-  userId: string,
-  subfolder = 'redacted'
-): Promise<string> => {
-  const isPdf = mimeType === 'application/pdf';
-  const extension = isPdf ? 'pdf' : mimeType === 'image/png' ? 'png' : 'jpg';
-  const resourceType: 'image' | 'raw' = isPdf ? 'raw' : 'image';
-  const publicId = `${env.CLOUDINARY_FOLDER}/${subfolder}/${userId}-${Date.now()}-${crypto.randomUUID()}.${extension}`;
-
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        public_id: publicId,
-        resource_type: resourceType,
-        format: extension,
-        type: 'upload',
-        access_mode: 'public',
-        overwrite: false,
-      },
-      (error, result) => {
-        if (error || !result?.secure_url) {
-          reject(error || new Error('Cloudinary redacted upload failed'));
-          return;
-        }
-        resolve(result.secure_url);
-      }
-    );
-    uploadStream.end(buffer);
-  });
-};
 
 import { detectPiiInPdfBuffer } from '../services/piiRedactor';
 
@@ -785,6 +746,11 @@ export const detectPiiFromFile = async (req: AuthRequest, res: Response, next: N
   try {
     if (!req.file) {
       next(new AppError(400, 'No file uploaded', 'FILE_REQUIRED'));
+      return;
+    }
+
+    if (req.file.mimetype !== 'application/pdf') {
+      next(new AppError(400, 'Only PDF files are supported for PII detection', 'ONLY_PDF_SUPPORTED'));
       return;
     }
 

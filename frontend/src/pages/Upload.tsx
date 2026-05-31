@@ -39,7 +39,6 @@ export const Upload = () => {
     setError(null);
     try {
       let redactedFile: File | null = null;
-      let finalSelectedFile = selectedFile;
       
       // If Classified Mode is checked and the file is a PDF, trigger local rasterization
       if (isClassified && selectedFile && (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf'))) {
@@ -58,7 +57,7 @@ export const Upload = () => {
         field,
         details,
         isClassified,
-        file: finalSelectedFile,
+        file: selectedFile,
         redactedFile,
       });
       navigate(`/roast/${newResume.id}`);
