@@ -12,7 +12,10 @@ export interface Resume {
   variant: "blue" | "red" | "green" | "yellow";
   isHot?: boolean;
   isChampion?: boolean;
+  isClassified?: boolean;
   pdfUrl?: string;
+  /** Original unredacted file URL — only available to the resume owner. */
+  originalPdfUrl?: string;
 }
 
 export interface Roast {

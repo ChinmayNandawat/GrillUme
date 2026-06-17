@@ -15,6 +15,7 @@ type ResumeRow = {
   details: string;
   isClassified: boolean;
   fileUrl: string | null;
+  redactedFileUrl: string | null;
   createdAt: string;
   updatedAt: string;
   userId: string;
@@ -138,7 +139,7 @@ const buildResumeDetailResponse = async (
 ): Promise<{ resume: ResumeRow; roasts: ResumeDetailRoastResponse[] } | null> => {
   const { data: resume, error: resumeError } = await supabase
     .from('Resume')
-    .select('id,title,field,details,isClassified,fileUrl,createdAt,updatedAt,userId')
+    .select('id,title,field,details,isClassified,fileUrl,redactedFileUrl,createdAt,updatedAt,userId')
     .eq('id', id)
     .maybeSingle();
 
@@ -289,7 +290,7 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
 
     let supabaseQuery = supabase
       .from('Resume')
-      .select('id,title,field,details,isClassified,fileUrl,createdAt,updatedAt,userId', { count: 'exact' })
+      .select('id,title,field,details,isClassified,fileUrl,redactedFileUrl,createdAt,updatedAt,userId', { count: 'exact' })
       .order('createdAt', { ascending: false })
       .range(from, to);
 
@@ -356,7 +357,8 @@ export const getResumes = async (req: Request, res: Response, next: NextFunction
         field: resume.field,
         details: resume.details,
         isClassified: resume.isClassified,
-        fileUrl: resume.fileUrl,
+        fileUrl: resume.isClassified ? (resume.redactedFileUrl || null) : resume.fileUrl,
+        redactedFileUrl: resume.redactedFileUrl,
         createdAt: resume.createdAt,
         updatedAt: resume.updatedAt,
         ownerUsername: publicUsers.get(resume.userId)?.username || 'unknown_user',
@@ -389,7 +391,7 @@ export const getMyResumes = async (req: AuthRequest, res: Response, next: NextFu
 
     const { data, error } = await supabase
       .from('Resume')
-      .select('id,title,field,details,isClassified,fileUrl,createdAt,updatedAt,userId')
+      .select('id,title,field,details,isClassified,fileUrl,redactedFileUrl,createdAt,updatedAt,userId')
       .eq('userId', userId)
       .order('createdAt', { ascending: false });
 
@@ -411,7 +413,7 @@ export const getMyResumes = async (req: AuthRequest, res: Response, next: NextFu
 export const createResume = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.userId;
-    const { title, field, details, isClassified, fileUrl } = req.body;
+    const { title, field, details, isClassified, fileUrl, redactedFileUrl } = req.body;
 
     if (!userId) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -424,13 +426,14 @@ export const createResume = async (req: AuthRequest, res: Response): Promise<voi
     }
 
     const now = new Date().toISOString();
-    const payload = {
+    const payload: Record<string, unknown> = {
       id: crypto.randomUUID(),
       title: String(title).trim(),
       field: String(field).trim(),
       details: String(details).trim(),
       isClassified: Boolean(isClassified),
       fileUrl: fileUrl ? String(fileUrl) : null,
+      redactedFileUrl: redactedFileUrl ? String(redactedFileUrl) : null,
       createdAt: now,
       updatedAt: now,
       userId,
@@ -585,7 +588,8 @@ export const getResumeById = async (req: AuthRequest, res: Response): Promise<vo
         field: detailResponse.resume.field,
         details: detailResponse.resume.details,
         isClassified: detailResponse.resume.isClassified,
-        fileUrl: detailResponse.resume.fileUrl,
+        fileUrl: (detailResponse.resume.isClassified && detailResponse.resume.userId !== userId) ? (detailResponse.resume.redactedFileUrl || null) : detailResponse.resume.fileUrl,
+        redactedFileUrl: detailResponse.resume.redactedFileUrl,
         createdAt: detailResponse.resume.createdAt,
         updatedAt: detailResponse.resume.updatedAt,
         ownerUsername: userMap.get(detailResponse.resume.userId)?.username || 'unknown_user',
@@ -621,7 +625,8 @@ export const getResumeRoastsById = async (req: AuthRequest, res: Response): Prom
         field: detailResponse.resume.field,
         details: detailResponse.resume.details,
         isClassified: detailResponse.resume.isClassified,
-        fileUrl: detailResponse.resume.fileUrl,
+        fileUrl: (detailResponse.resume.isClassified && detailResponse.resume.userId !== userId) ? (detailResponse.resume.redactedFileUrl || null) : detailResponse.resume.fileUrl,
+        redactedFileUrl: detailResponse.resume.redactedFileUrl,
         createdAt: detailResponse.resume.createdAt,
         updatedAt: detailResponse.resume.updatedAt,
         ownerUsername: userMap.get(detailResponse.resume.userId)?.username || 'unknown_user',
@@ -703,7 +708,7 @@ const uploadToCloudinary = async (
 ): Promise<{ publicId: string; secureUrl: string }> => {
   const extension = path.extname(file.originalname).toLowerCase() || '.bin';
   const safeExtension = extension.replace(/[^a-z0-9]/gi, '') || 'bin';
-  const publicId = `${env.CLOUDINARY_FOLDER}/${userId}-${Date.now()}-${crypto.randomUUID()}`;
+  const publicId = `${env.CLOUDINARY_FOLDER}/${userId}-${Date.now()}-${crypto.randomUUID()}${extension}`;
   const isPdf = file.mimetype === 'application/pdf';
   const resourceType: 'image' | 'raw' = isPdf ? 'raw' : 'image';
 
@@ -732,4 +737,27 @@ const uploadToCloudinary = async (
 
     uploadStream.end(file.buffer);
   });
+};
+
+
+import { detectPiiInPdfBuffer } from '../services/piiRedactor';
+
+export const detectPiiFromFile = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.file) {
+      next(new AppError(400, 'No file uploaded', 'FILE_REQUIRED'));
+      return;
+    }
+
+    if (req.file.mimetype !== 'application/pdf') {
+      next(new AppError(400, 'Only PDF files are supported for PII detection', 'ONLY_PDF_SUPPORTED'));
+      return;
+    }
+
+    const result = await detectPiiInPdfBuffer(req.file.buffer);
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Detect PII error:', error);
+    next(new AppError(500, 'Failed to detect PII', 'PII_DETECTION_FAILED', error));
+  }
 };

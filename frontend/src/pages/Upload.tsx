@@ -2,10 +2,12 @@ import { Upload as UploadIcon, Edit, Rocket, Flame } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { ErrorState } from "../components/ui/ErrorState";
 import { useRef, useState } from "react";
-import { uploadResume } from "../services/api.ts";
+import { uploadResume, detectPii } from "../services/api.ts";
+import { createRedactedPdf } from "../services/pdfRedactor";
 import { useAuth } from "../context/AuthContext";
 import { EmptyState } from "../components/ui/EmptyState";
 import { useNavigate } from "react-router-dom";
+
 export const Upload = () => {
   const { isAuthenticated, openAuthPanel } = useAuth();
   const navigate = useNavigate();
@@ -25,15 +27,38 @@ export const Upload = () => {
     }
     if (!title.trim() || isUploading) return;
     
+    if (isClassified && selectedFile) {
+      const isPdf = selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf');
+      if (!isPdf) {
+        setError("Classified mode is currently only supported for PDF files. Please upload a PDF or disable Classified Mode.");
+        return;
+      }
+    }
+
     setIsUploading(true);
     setError(null);
     try {
+      let redactedFile: File | null = null;
+      
+      // If Classified Mode is checked and the file is a PDF, trigger local rasterization
+      if (isClassified && selectedFile && (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf'))) {
+        const detectionResult = await detectPii(selectedFile);
+        if (detectionResult.piiFound && detectionResult.piiFound.length > 0) {
+          redactedFile = await createRedactedPdf(selectedFile, detectionResult.piiFound);
+        } else {
+          // If no PII found, we might still want to flatten it to strip metadata,
+          // but for now we'll just pass an empty array to flatten it anyway.
+          redactedFile = await createRedactedPdf(selectedFile, []);
+        }
+      }
+
       const newResume = await uploadResume({
         title,
         field,
         details,
         isClassified,
         file: selectedFile,
+        redactedFile,
       });
       navigate(`/roast/${newResume.id}`);
     } catch (err) {
@@ -164,6 +189,11 @@ export const Upload = () => {
                 <div className="w-14 h-8 bg-outline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-secondary border-2 border-on-background"></div>
               </label>
             </div>
+            {isClassified && (
+              <div className="mt-3 bg-white border-2 border-on-background p-3 rounded text-xs font-bold uppercase tracking-wide opacity-80">
+                🔒 Auto-redacts: Name, Email, Phone, Address, LinkedIn, GitHub &amp; other PII from your uploaded file using AI + regex detection.
+              </div>
+            )}
             <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:opacity-30 transition-opacity transform rotate-12">
               <div className="border-8 border-secondary text-secondary font-black font-headline text-4xl p-2 rounded-xl">CLASSIFIED</div>
             </div>
@@ -195,7 +225,9 @@ export const Upload = () => {
             <div className="flex items-center gap-4">
               <Flame size={32} className="text-secondary fill-secondary" />
               <span className="text-4xl font-black font-headline uppercase tracking-tighter">
-                {isUploading ? "LAUNCHING..." : "Launch Roast"}
+                {isUploading 
+                  ? (isClassified ? "REDACTING & LAUNCHING..." : "LAUNCHING...") 
+                  : "Launch Roast"}
               </span>
               <Rocket size={32} className={isUploading ? "animate-bounce" : "rotate-180"} />
             </div>

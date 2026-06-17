@@ -54,6 +54,7 @@ export type BackendResume = {
   details: string;
   isClassified: boolean;
   fileUrl?: string | null;
+  redactedFileUrl?: string | null;
   ownerUsername?: string;
   ownerAvatarUrl?: string;
   roastsCount?: number;
