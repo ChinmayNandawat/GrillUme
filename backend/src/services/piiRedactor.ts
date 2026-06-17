@@ -1,10 +1,12 @@
-import PDFParse from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 import { detectPii, PiiMatch } from './piiDetector';
 
 export async function detectPiiInPdfBuffer(buffer: Buffer): Promise<{ piiFound: PiiMatch[] }> {
   let fullText = '';
   try {
-    const data = await PDFParse(buffer);
+    // Bypass TS signature strictness for CommonJS module
+    const parser = pdfParse as any;
+    const data = await parser(buffer);
     fullText = data.text;
   } catch (err) {
     console.error('Error extracting text from PDF:', err);
